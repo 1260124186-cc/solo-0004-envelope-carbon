@@ -1,0 +1,24 @@
+{
+  "language": "TypeScript + Vue 3",
+  "project_shape": "frontend",
+  "source_extensions": [
+    ".ts",
+    ".vue"
+  ],
+  "build_command": "npm run build",
+  "testing": "deferred",
+  "workflow_checks": [
+    {
+      "workflow_id": "compose",
+      "command": "npm run smoke -- compose"
+    },
+    {
+      "workflow_id": "compare",
+      "command": "npm run smoke -- compare"
+    },
+    {
+      "workflow_id": "document",
+      "command": "npm run smoke -- document"
+    }
+  ]
+}
