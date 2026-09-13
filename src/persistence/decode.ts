@@ -1,4 +1,7 @@
 import type { EnvelopeData } from './types'
+import type { Assembly } from '../assemblies/types'
+import type { Material } from '../materials/types'
+import type { CarbonDocument } from '../documents/types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -17,10 +20,69 @@ function assertUnique(items: { id: string }[], label: string): void {
   }
 }
 
+const migratedCreatedAt = '2026-01-01T00:00:00.000Z'
+
+// 版本化之前的材料把物性直接放在材料上；迁移为唯一的版本 1，物性原值保留。
+function migrateMaterial(material: Material): Material {
+  const legacy = material as unknown as Record<string, unknown>
+  if (Array.isArray(legacy.revisions)) return material
+  return {
+    id: material.id,
+    name: material.name,
+    kind: material.kind,
+    description: material.description,
+    custom: material.custom,
+    revisions: [
+      {
+        revision: 1,
+        density: legacy.density,
+        conductivity: legacy.conductivity,
+        factor: legacy.factor,
+        lifespan: legacy.lifespan,
+        source: legacy.source,
+        note: '初始版本',
+        createdAt: migratedCreatedAt,
+      } as Material['revisions'][number],
+    ],
+  }
+}
+
+// 版本化之前的构造层没有版本引用；迁移为引用所属材料的版本 1。
+function migrateAssembly(assembly: Assembly): Assembly {
+  return {
+    ...assembly,
+    layers: assembly.layers.map((layer) =>
+      Number.isInteger(layer.materialRevision) ? layer : { ...layer, materialRevision: 1 },
+    ),
+  }
+}
+
+function migrateDocument(document: CarbonDocument): CarbonDocument {
+  return {
+    ...document,
+    assembly: migrateAssembly(document.assembly),
+    materials: document.materials.map(migrateMaterial),
+  }
+}
+
+function migrate(parsed: Record<string, unknown>): EnvelopeData {
+  const data = parsed as unknown as EnvelopeData
+  return {
+    schema: 2,
+    stamp: data.stamp,
+    assemblies: data.assemblies.map(migrateAssembly),
+    materials: data.materials.map(migrateMaterial),
+    documents: data.documents.map(migrateDocument),
+  }
+}
+
 export function decode(raw: string): EnvelopeData {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!object(parsed) || parsed.schema !== 1 || typeof parsed.stamp !== 'string') {
+    if (!object(parsed) || typeof parsed.stamp !== 'string') {
+      throw new Error('存储版本不受支持。')
+    }
+    if (parsed.schema !== 1 && parsed.schema !== 2) {
       throw new Error('存储版本不受支持。')
     }
     if (
@@ -30,7 +92,7 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
-    const data = parsed as unknown as EnvelopeData
+    const data = migrate(parsed)
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||

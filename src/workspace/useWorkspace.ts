@@ -1,10 +1,15 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
-import type { Material } from '../materials/types'
+import type { Material, MaterialInput, RevisionInput } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
-import { validateMaterial } from '../materials/validation'
+import {
+  maxRevisionsPerMaterial,
+  validateMaterial,
+  validateRevisionInput,
+} from '../materials/validation'
+import { latestRevision } from '../materials/revisions'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
@@ -215,8 +220,26 @@ export function useWorkspace() {
     }
   }
 
-  async function addCustomMaterial(input: Material): Promise<boolean> {
-    const candidate = clone({ ...input, id: newId('material'), custom: true })
+  async function addCustomMaterial(input: MaterialInput): Promise<boolean> {
+    const candidate: Material = {
+      id: newId('material'),
+      name: input.name.trim(),
+      kind: input.kind,
+      description: input.description,
+      custom: true,
+      revisions: [
+        {
+          revision: 1,
+          density: input.density,
+          conductivity: input.conductivity,
+          factor: input.factor,
+          lifespan: input.lifespan,
+          source: input.source.trim(),
+          note: input.note.trim() || '初始版本',
+          createdAt: now(),
+        },
+      ],
+    }
     const errors = validateMaterial(candidate)
     if (errors.length) {
       error.value = errors[0]
@@ -224,12 +247,37 @@ export function useWorkspace() {
     }
     return act((next) => {
       if (next.materials.length >= 500) throw new Error('最多保存 500 种材料。')
-      if (next.materials.some((material) => material.name.trim() === candidate.name.trim())) {
+      if (next.materials.some((material) => material.name.trim() === candidate.name)) {
         throw new Error('材料名称已存在，请使用可区分的名称。')
       }
-      candidate.name = candidate.name.trim()
       next.materials.push(candidate)
     }, '自定义材料已保存，可在构造中选用。')
+  }
+
+  async function reviseMaterial(materialId: string, input: RevisionInput): Promise<boolean> {
+    const errors = validateRevisionInput(input)
+    if (errors.length) {
+      error.value = errors[0]
+      return false
+    }
+    return act((next) => {
+      const material = next.materials.find((item) => item.id === materialId)
+      if (!material) throw new Error('材料不存在。')
+      if (!material.custom) throw new Error('内置示例材料为只读，请建立自定义材料。')
+      if (material.revisions.length >= maxRevisionsPerMaterial) {
+        throw new Error(`单个材料最多 ${maxRevisionsPerMaterial} 个版本。`)
+      }
+      material.revisions.push({
+        revision: latestRevision(material).revision + 1,
+        density: input.density,
+        conductivity: input.conductivity,
+        factor: input.factor,
+        lifespan: input.lifespan,
+        source: input.source.trim(),
+        note: input.note.trim(),
+        createdAt: now(),
+      })
+    }, '新版本已保存；既有构造仍引用原版本，可在构造编辑中逐层升级。')
   }
 
   async function alignAlternative() {
@@ -305,6 +353,7 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
+    reviseMaterial,
     alignAlternative,
   }
 }

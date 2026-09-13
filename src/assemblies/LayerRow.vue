@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { Layer } from './types'
 import type { Material } from '../materials/types'
 import { kindColors, kindLabels } from '../materials/types'
+import { latestRevision, revisionOf } from '../materials/revisions'
 import { number } from '../shared/format'
 const props = defineProps<{
   layer: Layer
@@ -17,11 +18,28 @@ const emit = defineEmits<{
   move: [direction: -1 | 1]
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
+const revision = computed(() =>
+  material.value ? revisionOf(material.value, props.layer.materialRevision) : undefined,
+)
+const latest = computed(() => (material.value ? latestRevision(material.value) : undefined))
+const hasNewer = computed(
+  () =>
+    latest.value !== undefined &&
+    revision.value !== undefined &&
+    latest.value.revision > revision.value.revision,
+)
 function changeMaterial(event: Event) {
   const selected = props.materials.find(
     (item) => item.id === (event.target as HTMLSelectElement).value,
   )
-  if (selected) emit('update', { materialId: selected.id, lifespan: selected.lifespan })
+  if (selected) {
+    const revision = latestRevision(selected)
+    emit('update', {
+      materialId: selected.id,
+      materialRevision: revision.revision,
+      lifespan: revision.lifespan,
+    })
+  }
 }
 function numeric(event: Event): number {
   return (event.target as HTMLInputElement).valueAsNumber
@@ -128,11 +146,22 @@ function numeric(event: Event): number {
         </label>
       </div>
       <p
-        v-if="material"
+        v-if="material && revision"
         class="layer-reference"
       >
-        密度 {{ number(material.density) }} 千克/立方米 <span>·</span> 碳因子
-        {{ number(material.factor) }} 千克当量/千克
+        密度 {{ number(revision.density) }} 千克/立方米 <span>·</span> 碳因子
+        {{ number(revision.factor) }} 千克当量/千克 <span>·</span> 引用版本
+        {{ revision.revision }}
+        <template v-if="hasNewer && latest">
+          <span>·</span> 已有版本 {{ latest.revision }}
+          <button
+            class="upgrade-button"
+            :aria-label="`第 ${index + 1} 层升级到最新材料版本`"
+            @click="emit('update', { materialRevision: latest.revision })"
+          >
+            升级到最新版本
+          </button>
+        </template>
       </p>
     </div>
   </fieldset>
@@ -201,6 +230,15 @@ function numeric(event: Event): number {
 }
 .layer-reference span {
   margin: 0 8px;
+}
+.upgrade-button {
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 10px;
+  text-decoration: underline;
+  padding: 2px 4px;
+  margin-left: 6px;
 }
 @media (max-width: 600px) {
   .layer-row {

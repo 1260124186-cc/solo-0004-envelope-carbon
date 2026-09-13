@@ -24,8 +24,9 @@ export function documentText(document: CarbonDocument): string {
     '二、构造层（室外至室内）',
   ]
   result.layers.forEach((layer, index) => {
+    const pinned = assembly.layers.find((item) => item.id === layer.layerId)
     lines.push(
-      `${index + 1}. ${layer.materialName}，厚 ${number(layer.thickness)} 毫米`,
+      `${index + 1}. ${layer.materialName}（版本 ${pinned?.materialRevision ?? '未知'}），厚 ${number(layer.thickness)} 毫米`,
       `质量 ${number(layer.mass)} 千克/平方米；替换 ${layer.cycles} 次`,
       `隐含碳 ${number(layer.total)} 千克二氧化碳当量/平方米`,
       `参数来源：${layer.source}`,
@@ -33,10 +34,12 @@ export function documentText(document: CarbonDocument): string {
   })
   lines.push('', '三、冻结物性')
   document.materials.forEach((material) => {
-    lines.push(
-      `${material.name}：密度 ${material.density} 千克/立方米`,
-      `导热系数 ${material.conductivity} 瓦/(米·开尔文)；碳因子 ${material.factor} 千克二氧化碳当量/千克`,
-    )
+    material.revisions.forEach((revision) => {
+      lines.push(
+        `${material.name}（版本 ${revision.revision}）：密度 ${revision.density} 千克/立方米`,
+        `导热系数 ${revision.conductivity} 瓦/(米·开尔文)；碳因子 ${revision.factor} 千克二氧化碳当量/千克`,
+      )
+    })
   })
   lines.push(
     '',

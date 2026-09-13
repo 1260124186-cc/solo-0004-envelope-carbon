@@ -3,7 +3,7 @@ import type { Material } from '../materials/types'
 import type { CarbonDocument } from '../documents/types'
 
 export interface EnvelopeData {
-  schema: 1
+  schema: 2
   stamp: string
   assemblies: Assembly[]
   materials: Material[]

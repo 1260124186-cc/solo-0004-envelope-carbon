@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'version'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 version 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,49 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'version') {
+    await button('04 材料参数').click()
+    await button('＋ 自定义材料').click()
+    await page.getByLabel('材料名称', { exact: true }).fill('版本化试算材料')
+    await page.getByLabel('参数来源', { exact: true }).fill('冒烟初始来源')
+    await button('保存材料参数').click()
+    await text('自定义材料已保存，可在构造中选用。').waitFor()
+
+    await button('01 构造编辑').click()
+    await button('＋ 新建构造').click()
+    await page.getByLabel('构造名称', { exact: true }).fill('版本构造')
+    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '版本化试算材料' })
+    await button('＋ 添加这一层').click()
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('100')
+    await page.getByLabel('第 1 层损耗', { exact: true }).fill('0')
+    await page.getByLabel('第 1 层寿命', { exact: true }).fill('150')
+    assert.equal(await intensity.innerText(), '12')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    await button('04 材料参数').click()
+    await button('修订物性').click()
+    await page.getByLabel('碳因子（千克当量/千克）', { exact: true }).fill('2')
+    await page.getByLabel('修订说明', { exact: true }).fill('冒烟提高碳因子')
+    await button('保存新版本').click()
+    await text('新版本已保存；既有构造仍引用原版本，可在构造编辑中逐层升级。').waitFor()
+    await text('版本 1：版本构造').waitFor()
+
+    await button('01 构造编辑').click()
+    assert.equal(await intensity.innerText(), '12')
+    await page.getByText('引用版本 1').waitFor()
+    await page.reload()
+    await page.getByLabel('当前构造', { exact: true }).selectOption({ label: '版本构造 · 编辑中' })
+    assert.equal(await intensity.innerText(), '12')
+
+    await button('第 1 层升级到最新材料版本').click()
+    assert.equal(await intensity.innerText(), '24')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    await page.getByText('版本 2', { exact: true }).waitFor()
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

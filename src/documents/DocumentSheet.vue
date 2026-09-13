@@ -3,7 +3,10 @@ import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
-defineProps<{ document: CarbonDocument }>()
+const props = defineProps<{ document: CarbonDocument }>()
+function layerRevision(layerId: string): number | undefined {
+  return props.document.assembly.layers.find((layer) => layer.id === layerId)?.materialRevision
+}
 </script>
 
 <template>
@@ -46,6 +49,7 @@ defineProps<{ document: CarbonDocument }>()
         <thead>
           <tr>
             <th scope="col">材料</th>
+            <th scope="col">材料版本</th>
             <th scope="col">厚度（毫米）</th>
             <th scope="col">替换次数</th>
             <th scope="col">隐含碳（千克当量/平方米）</th>
@@ -57,6 +61,7 @@ defineProps<{ document: CarbonDocument }>()
             :key="layer.layerId"
           >
             <th scope="row">{{ layer.materialName }}</th>
+            <td>版本 {{ layerRevision(layer.layerId) }}</td>
             <td>{{ number(layer.thickness) }}</td>
             <td>{{ layer.cycles }}</td>
             <td>{{ number(layer.total) }}</td>
@@ -68,12 +73,17 @@ defineProps<{ document: CarbonDocument }>()
       <h3>设计说明</h3>
       <p>{{ document.assembly.note || '无补充说明。' }}</p>
       <h3>参数来源</h3>
-      <p
+      <template
         v-for="material in document.materials"
         :key="material.id"
       >
-        {{ material.name }}：{{ material.source }}
-      </p>
+        <p
+          v-for="revision in material.revisions"
+          :key="revision.revision"
+        >
+          {{ material.name }}（版本 {{ revision.revision }}）：{{ revision.source }}
+        </p>
+      </template>
       <p>本计算书冻结生成时的输入与结果，后续构造修改不会改变本版本。</p>
     </div>
     <button

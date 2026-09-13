@@ -35,8 +35,11 @@ export function validateAssembly(assembly: Assembly, materials: Material[]): Fin
     const path = `layers.${layer.id}`
     if (ids.has(layer.id)) add(path, `${prefix}的标识重复。`)
     ids.add(layer.id)
-    if (!materials.some((material) => material.id === layer.materialId)) {
+    const material = materials.find((item) => item.id === layer.materialId)
+    if (!material) {
       add(path, `${prefix}引用的材料不存在。`)
+    } else if (!material.revisions.some((item) => item.revision === layer.materialRevision)) {
+      add(path, `${prefix}引用的材料版本不存在。`)
     }
     if (!inRange(layer.thickness, 0.1, 2000)) {
       add(path, `${prefix}厚度需在 0.1 至 2,000 毫米之间。`)

@@ -1,16 +1,38 @@
 export type MaterialKind = 'structure' | 'insulation' | 'finish'
 
-export interface Material {
-  id: string
-  name: string
-  kind: MaterialKind
+export interface MaterialRevision {
+  revision: number
   density: number
   conductivity: number
   factor: number
   lifespan: number
   source: string
+  note: string
+  createdAt: string
+}
+
+export interface Material {
+  id: string
+  name: string
+  kind: MaterialKind
   description: string
   custom: boolean
+  revisions: MaterialRevision[]
+}
+
+export interface RevisionInput {
+  density: number
+  conductivity: number
+  factor: number
+  lifespan: number
+  source: string
+  note: string
+}
+
+export interface MaterialInput extends RevisionInput {
+  name: string
+  kind: MaterialKind
+  description: string
 }
 
 export const kindLabels: Record<MaterialKind, string> = {

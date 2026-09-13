@@ -35,6 +35,7 @@ const {
   finalize,
   reopen,
   addCustomMaterial,
+  reviseMaterial,
   alignAlternative,
 } = useWorkspace()
 </script>
@@ -119,8 +120,10 @@ const {
       <MaterialWorkspace
         v-else
         :materials="data.materials"
+        :assemblies="data.assemblies"
         :busy="busy"
         :submit-material="addCustomMaterial"
+        :submit-revision="reviseMaterial"
       />
     </template>
     <div

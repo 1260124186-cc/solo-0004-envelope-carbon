@@ -1,14 +1,17 @@
 import type { Assembly, Layer } from './types'
 import type { Material } from '../materials/types'
+import { latestRevision } from '../materials/revisions'
 import { clone, newId, now } from '../shared/identity'
 
 export function createLayer(material: Material): Layer {
+  const revision = latestRevision(material)
   return {
     id: newId('ply'),
     materialId: material.id,
+    materialRevision: revision.revision,
     thickness: material.kind === 'structure' ? 200 : 20,
     loss: 3,
-    lifespan: material.lifespan,
+    lifespan: revision.lifespan,
   }
 }
 

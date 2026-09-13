@@ -4,6 +4,7 @@ export type AssemblyState = 'editing' | 'finalized'
 export interface Layer {
   id: string
   materialId: string
+  materialRevision: number
   thickness: number
   loss: number
   lifespan: number

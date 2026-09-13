@@ -17,10 +17,12 @@ export function calculate(assembly: Assembly, materials: Material[]): Calculatio
   const layers: LayerResult[] = assembly.layers.map((layer) => {
     const material = byId.get(layer.materialId)
     if (!material) throw new Error('材料参数缺失，无法计算。')
+    const revision = material.revisions.find((item) => item.revision === layer.materialRevision)
+    if (!revision) throw new Error('材料版本缺失，无法计算。')
     const errors = validateMaterial(material)
     if (errors.length) throw new Error(errors.join('\n'))
-    const mass = (layer.thickness / 1000) * material.density
-    const initial = mass * material.factor * (1 + layer.loss / 100)
+    const mass = (layer.thickness / 1000) * revision.density
+    const initial = mass * revision.factor * (1 + layer.loss / 100)
     const cycles = replacementCycles(assembly.years, layer.lifespan)
     const replacement = initial * cycles
     return {
@@ -32,8 +34,8 @@ export function calculate(assembly: Assembly, materials: Material[]): Calculatio
       replacement,
       cycles,
       total: initial + replacement,
-      resistance: layer.thickness / 1000 / material.conductivity,
-      source: material.source,
+      resistance: layer.thickness / 1000 / revision.conductivity,
+      source: revision.source,
     }
   })
   const sum = (field: 'thickness' | 'mass' | 'initial' | 'replacement' | 'total' | 'resistance') =>

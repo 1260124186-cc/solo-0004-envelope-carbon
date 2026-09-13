@@ -1,57 +1,37 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import type { Material, MaterialInput, MaterialKind } from './types'
-import { kindLabels } from './types'
-import { validateMaterial } from './validation'
+import type { Material, RevisionInput } from './types'
+import { latestRevision } from './revisions'
+import { validateRevisionInput } from './validation'
 const props = defineProps<{
+  material: Material
   busy: boolean
-  submitMaterial: (input: MaterialInput) => Promise<boolean>
+  submitRevision: (materialId: string, input: RevisionInput) => Promise<boolean>
 }>()
 const emit = defineEmits<{ cancel: [] }>()
-const form = reactive<MaterialInput>({
-  name: '',
-  kind: 'insulation',
-  density: 120,
-  conductivity: 0.04,
-  factor: 1,
-  lifespan: 30,
-  source: '',
+const latest = latestRevision(props.material)
+const form = reactive<RevisionInput>({
+  density: latest.density,
+  conductivity: latest.conductivity,
+  factor: latest.factor,
+  lifespan: latest.lifespan,
+  source: latest.source,
   note: '',
-  description: '',
 })
-const draft = computed<Material>(() => ({
-  id: '',
-  name: form.name,
-  kind: form.kind,
-  description: form.description,
-  custom: true,
-  revisions: [
-    {
-      revision: 1,
-      density: form.density,
-      conductivity: form.conductivity,
-      factor: form.factor,
-      lifespan: form.lifespan,
-      source: form.source,
-      note: form.note,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    },
-  ],
-}))
-const issues = computed(() => validateMaterial(draft.value))
+const issues = computed(() => validateRevisionInput(form))
 async function submit() {
   if (issues.value.length || props.busy) return
-  if (await props.submitMaterial({ ...form })) emit('cancel')
+  if (await props.submitRevision(props.material.id, { ...form })) emit('cancel')
 }
 </script>
 
 <template>
   <form
-    class="material-form"
+    class="revision-form"
     @submit.prevent="submit"
   >
     <div class="section-heading">
-      <h2>添加自定义物性</h2>
+      <h2>修订「{{ material.name }}」的物性</h2>
       <button
         type="button"
         class="button small"
@@ -62,29 +42,10 @@ async function submit() {
       </button>
     </div>
     <fieldset
-      class="material-form-fields"
+      class="revision-form-fields"
       :disabled="busy"
     >
-      <legend class="sr-only">自定义材料参数</legend>
-      <label
-        >材料名称<input
-          v-model="form.name"
-          required
-          maxlength="40"
-          placeholder="用名称区分不同来源或规格"
-      /></label>
-      <label
-        >材料类别
-        <select v-model="form.kind">
-          <option
-            v-for="(label, key) in kindLabels"
-            :key="key"
-            :value="key as MaterialKind"
-          >
-            {{ label }}
-          </option>
-        </select>
-      </label>
+      <legend class="sr-only">修订材料物性</legend>
       <label
         >密度（千克/立方米）<input
           v-model.number="form.density"
@@ -125,18 +86,18 @@ async function submit() {
           v-model="form.source"
           required
           maxlength="200"
-          placeholder="填写资料名称、年份和适用范围"
+          placeholder="填写本次参数的资料名称、年份和适用范围"
       /></label>
       <label class="wide"
-        >材料说明<textarea
-          v-model="form.description"
-          rows="2"
-          maxlength="500"
-        />
-      </label>
+        >修订说明<input
+          v-model="form.note"
+          maxlength="200"
+          placeholder="说明本次修订原因，例如更换参数来源"
+      /></label>
     </fieldset>
     <p class="muted form-help">
-      保存后即为版本 1；日后修订物性会生成新版本并保留旧版本，既有构造继续引用原版本。
+      保存后生成版本 {{ latest.revision + 1 }}，版本 {{ latest.revision }}
+      保持不变；既有构造继续引用原版本，可在构造编辑中逐层升级。
     </p>
     <ul
       v-if="issues.length"
@@ -154,20 +115,20 @@ async function submit() {
       type="submit"
       :disabled="busy || issues.length > 0"
     >
-      保存材料参数
+      保存新版本
     </button>
   </form>
 </template>
 
 <style scoped>
-.material-form {
+.revision-form {
   background: #f4f7f1;
   border: 1px solid #d1dfd4;
   padding: 24px;
   border-radius: 6px;
   margin: 24px 0;
 }
-.material-form-fields {
+.revision-form-fields {
   border: 0;
   padding: 0;
   margin: 20px 0 0;
@@ -188,7 +149,7 @@ async function submit() {
   padding-left: 18px;
 }
 @media (max-width: 600px) {
-  .material-form-fields {
+  .revision-form-fields {
     grid-template-columns: 1fr;
   }
 }
