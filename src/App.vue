@@ -7,9 +7,12 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import SchemePicker from './schemes/SchemePicker.vue'
+import SchemeWorkspace from './schemes/SchemeWorkspace.vue'
 const {
   data,
   draft,
+  schemeDraft,
   tab,
   notice,
   error,
@@ -17,8 +20,10 @@ const {
   busy,
   externalChange,
   dirty,
+  schemeDirty,
   findings,
   result,
+  schemeEvaluation,
   selectedDocuments,
   baselineId,
   alternativeId,
@@ -36,6 +41,15 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  selectScheme,
+  createSchemeDraft,
+  updateScheme,
+  addSchemeEntry,
+  updateSchemeEntry,
+  removeSchemeEntry,
+  keepSchemeEntry,
+  updateSchemeEntryReference,
+  saveScheme,
 } = useWorkspace()
 </script>
 
@@ -77,6 +91,14 @@ const {
         @create="create"
         @duplicate="duplicate"
       />
+      <SchemePicker
+        v-else-if="tab === 'schemes' && schemeDraft"
+        :schemes="data.schemes"
+        :selected-id="schemeDraft.id"
+        :busy="busy"
+        @select="selectScheme"
+        @create="createSchemeDraft"
+      />
       <DesignWorkspace
         v-if="tab === 'design'"
         :assembly="draft"
@@ -103,6 +125,36 @@ const {
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
+        @design="tab = 'design'"
+      />
+      <div
+        v-else-if="tab === 'schemes' && !schemeDraft"
+        class="empty-state"
+      >
+        <h2>还没有围护组合</h2>
+        <p>把同一建筑的外墙、屋面和楼板构造组织成一份完整方案，组合保存时会冻结引用版本。</p>
+        <button
+          class="button primary"
+          :disabled="busy"
+          @click="createSchemeDraft"
+        >
+          ＋ 新建围护组合
+        </button>
+      </div>
+      <SchemeWorkspace
+        v-else-if="tab === 'schemes' && schemeDraft"
+        :scheme="schemeDraft"
+        :assemblies="data.assemblies"
+        :evaluation="schemeEvaluation"
+        :busy="busy"
+        :dirty="schemeDirty"
+        @update="updateScheme"
+        @add-entry="addSchemeEntry"
+        @update-entry="updateSchemeEntry"
+        @remove-entry="removeSchemeEntry"
+        @keep="keepSchemeEntry"
+        @update-reference="updateSchemeEntryReference"
+        @save="saveScheme"
         @design="tab = 'design'"
       />
       <DocumentWorkspace

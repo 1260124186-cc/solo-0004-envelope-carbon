@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'scheme'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 scheme 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -32,7 +32,7 @@ try {
   assert.equal(await intensity.innerText(), '90.1')
 
   if (workflow === 'compose') {
-    await button('04 材料参数').click()
+    await button('05 材料参数').click()
     await button('＋ 自定义材料').click()
     await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')
@@ -101,11 +101,77 @@ try {
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     assert.notEqual(await intensity.innerText(), '90.1')
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'scheme') {
+    await button('03 围护组合').click()
+    await button('＋ 新建围护组合').click()
+    await page.getByLabel('组合名称', { exact: true }).fill('冒烟组合方案')
+
+    await page.getByLabel('从已保存构造中选择', { exact: true }).selectOption({ index: 1 })
+    await button('＋ 加入组合').click()
+    await page.getByLabel('从已保存构造中选择', { exact: true }).selectOption({ index: 2 })
+    await button('＋ 加入组合').click()
+
+    // 三个构造分别为 60、50、60 年，年限不一致必须明确阻止混算。
+    await page.getByLabel('从已保存构造中选择', { exact: true }).selectOption({ index: 1 })
+    await button('＋ 加入组合').click()
+    await text('计算年限不一致，不能直接混算总量。').waitFor()
+    assert.equal(await page.locator('[data-check="scheme-intensity"]').count(), 0)
+
+    // 移除 50 年屋面后，外墙与楼板同为 60 年，可以给出总量与平均强度。
+    await page.getByRole('button', { name: '从组合中移除 庭院样房 · 泡沫玻璃屋面' }).click()
+    const schemeIntensity = page.locator('[data-check="scheme-intensity"]')
+    await schemeIntensity.waitFor()
+    await page.locator('[id^="area-"]').first().fill('300')
+    assert.equal(await schemeIntensity.innerText(), '94.25')
+    assert.match(await page.locator('[data-check="scheme-total"]').innerText(), /^47,127(\.0+)?\s/)
+
+    await button('保存组合').click()
+    await text('围护组合已保存，引用版本与面积均已固定。').waitFor()
+    await page.reload()
+    await button('03 围护组合').click()
+    assert.equal(await schemeIntensity.innerText(), '94.25')
+
+    // 修改被引用的原构造：已保存组合不得被悄悄改变，需用户显式选择。
+    await button('01 构造编辑').click()
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '庭院样房 · 混凝土楼板 · 编辑中',
+    })
+    await page.getByLabel('第 3 层厚度', { exact: true }).fill('200')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('03 围护组合').click()
+    assert.equal(await schemeIntensity.innerText(), '94.25')
+    await text('部位「庭院样房 · 混凝土楼板」引用的构造后来被修改了。').waitFor()
+
+    // 保留冻结版本：结果不变，保存后提示消失。
+    await button('保留冻结版本').click()
+    await button('保存组合').click()
+    await text('围护组合已保存，引用版本与面积均已固定。').waitFor()
+    await page.reload()
+    await button('03 围护组合').click()
+    assert.equal(await schemeIntensity.innerText(), '94.25')
+    assert.equal(await page.getByText('引用的构造后来被修改了', { exact: false }).count(), 0)
+
+    // 再次修改原构造后提示应重新出现；选择更新引用，结果按新版本重算。
+    await button('01 构造编辑').click()
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '庭院样房 · 混凝土楼板 · 编辑中',
+    })
+    await page.getByLabel('第 3 层厚度', { exact: true }).fill('150')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('03 围护组合').click()
+    await text('部位「庭院样房 · 混凝土楼板」引用的构造后来被修改了。').waitFor()
+    await button('更新为当前版本').click()
+    await button('保存组合').click()
+    await text('围护组合已保存，引用版本与面积均已固定。').waitFor()
+    assert.match(await page.locator('[data-check="scheme-total"]').innerText(), /^45,198\.84\s/)
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

@@ -1,6 +1,7 @@
 import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
+import { validateStoredEntry } from '../schemes/validation'
 import { calculate } from '../carbon/engine'
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -30,17 +31,24 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
+    // 组合功能晚于首版上线，兼容缺少 schemes 字段的既有存储。
+    if (parsed.schemes !== undefined && !Array.isArray(parsed.schemes)) {
+      throw new Error('组合存储结构不完整。')
+    }
     const data = parsed as unknown as EnvelopeData
+    if (!Array.isArray(data.schemes)) data.schemes = []
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.schemes.length > 100
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.schemes, '围护组合')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -63,6 +71,30 @@ export function decode(raw: string): EnvelopeData {
         JSON.stringify(document.result)
       ) {
         throw new Error('计算书结果与冻结输入不一致。')
+      }
+    }
+    for (const scheme of data.schemes) {
+      if (typeof scheme.name !== 'string' || !scheme.name.trim() || scheme.name.length > 50) {
+        throw new Error('组合名称无效。')
+      }
+      if (typeof scheme.note !== 'string' || scheme.note.length > 1000) {
+        throw new Error('组合说明无效。')
+      }
+      if (!Number.isInteger(scheme.revision) || scheme.revision < 1) {
+        throw new Error('组合修订号无效。')
+      }
+      if (!Number.isFinite(Date.parse(scheme.updatedAt))) throw new Error('组合时间无效。')
+      if (
+        !Array.isArray(scheme.entries) ||
+        scheme.entries.length === 0 ||
+        scheme.entries.length > 50
+      ) {
+        throw new Error('组合部位数量无效。')
+      }
+      assertUnique(scheme.entries, '组合部位')
+      for (const entry of scheme.entries) {
+        const entryErrors = validateStoredEntry(entry)
+        if (entryErrors.length) throw new Error(`组合「${scheme.name}」${entryErrors[0]}`)
       }
     }
     return data

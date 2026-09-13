@@ -2,20 +2,25 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
+import type { EnvelopeScheme } from '../schemes/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { assemblyChecksum, createEntry, createScheme } from '../schemes/factory'
+import { validateScheme } from '../schemes/validation'
+import { evaluateScheme } from '../schemes/engine'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'schemes' | 'documents' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
   const draft = ref<Assembly | null>(null)
+  const schemeDraft = ref<EnvelopeScheme | null>(null)
   const tab = shallowRef<WorkspaceTab>('design')
   const notice = shallowRef('')
   const error = shallowRef('')
@@ -30,6 +35,16 @@ export function useWorkspace() {
   const dirty = computed(() =>
     Boolean(draft.value && JSON.stringify(draft.value) !== JSON.stringify(persisted.value)),
   )
+  const persistedScheme = computed(() =>
+    data.value?.schemes.find((item) => item.id === schemeDraft.value?.id),
+  )
+  const schemeDirty = computed(() =>
+    Boolean(
+      schemeDraft.value &&
+        JSON.stringify(schemeDraft.value) !== JSON.stringify(persistedScheme.value),
+    ),
+  )
+  const anyDirty = computed(() => dirty.value || schemeDirty.value)
   const editable = computed(() => draft.value?.state === 'editing')
   const findings = computed(() =>
     draft.value ? validateAssembly(draft.value, data.value?.materials ?? []) : [],
@@ -38,6 +53,14 @@ export function useWorkspace() {
     if (!draft.value || !data.value || findings.value.length) return null
     return calculate(draft.value, data.value.materials)
   })
+  const schemeFindings = computed(() =>
+    schemeDraft.value ? validateScheme(schemeDraft.value) : [],
+  )
+  const schemeEvaluation = computed(() =>
+    schemeDraft.value && data.value
+      ? evaluateScheme(schemeDraft.value, data.value.assemblies)
+      : null,
+  )
   const selectedDocuments = computed(
     () =>
       data.value?.documents
@@ -52,7 +75,13 @@ export function useWorkspace() {
   }
 
   function mayDiscard(): boolean {
-    return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
+    if (dirty.value) {
+      return window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
+    }
+    if (schemeDirty.value) {
+      return window.confirm('当前围护组合有未保存的修改，是否放弃这些修改？')
+    }
+    return true
   }
 
   function load(initial = false) {
@@ -60,9 +89,13 @@ export function useWorkspace() {
     try {
       const next = readData()
       const selectedId = draft.value?.id
+      const selectedSchemeId = schemeDraft.value?.id
       data.value = next
       draft.value = clone(
         next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null,
+      )
+      schemeDraft.value = clone(
+        next.schemes.find((item) => item.id === selectedSchemeId) ?? next.schemes[0] ?? null,
       )
       baselineId.value = next.assemblies[0]?.id ?? ''
       alternativeId.value = next.assemblies[1]?.id ?? ''
@@ -253,6 +286,121 @@ export function useWorkspace() {
     }
   }
 
+  function selectScheme(id: string) {
+    if (busy.value || !mayDiscard()) return
+    const selected = data.value?.schemes.find((item) => item.id === id)
+    if (!selected) return
+    schemeDraft.value = clone(selected)
+    clearFeedback()
+    tab.value = 'schemes'
+  }
+
+  function createSchemeDraft() {
+    if (busy.value || !mayDiscard()) return
+    if (!data.value || data.value.assemblies.length === 0) {
+      error.value = '请先在构造编辑中保存至少一个构造，再建立围护组合。'
+      return
+    }
+    schemeDraft.value = createScheme()
+    clearFeedback()
+    tab.value = 'schemes'
+  }
+
+  function updateScheme(patch: Partial<EnvelopeScheme>) {
+    if (!schemeDraft.value || busy.value) return
+    schemeDraft.value = { ...schemeDraft.value, ...patch }
+    clearFeedback()
+  }
+
+  function addSchemeEntry(assemblyId: string) {
+    if (!schemeDraft.value || !data.value || busy.value) return
+    if (schemeDraft.value.entries.length >= 50) {
+      error.value = '单个组合最多包含 50 个部位。'
+      return
+    }
+    const assembly = data.value.assemblies.find((item) => item.id === assemblyId)
+    if (!assembly) {
+      error.value = '所选构造不存在，请重新选择。'
+      return
+    }
+    schemeDraft.value = {
+      ...schemeDraft.value,
+      entries: [...schemeDraft.value.entries, createEntry(assembly, data.value.materials)],
+    }
+    clearFeedback()
+  }
+
+  function updateSchemeEntry(entryId: string, area: number) {
+    if (!schemeDraft.value) return
+    // 只修改组合内面积，绝不写回被引用的原构造。
+    updateScheme({
+      entries: schemeDraft.value.entries.map((entry) =>
+        entry.id === entryId ? { ...entry, area } : entry,
+      ),
+    })
+  }
+
+  function removeSchemeEntry(entryId: string) {
+    if (!schemeDraft.value) return
+    updateScheme({
+      entries: schemeDraft.value.entries.filter((entry) => entry.id !== entryId),
+    })
+  }
+
+  /** 保留冻结版本：不改动快照与结果，仅记录已确认，避免重复提示。 */
+  function keepSchemeEntry(entryId: string) {
+    if (!schemeDraft.value || !data.value) return
+    const entry = schemeDraft.value.entries.find((item) => item.id === entryId)
+    if (!entry) return
+    const live = data.value.assemblies.find((item) => item.id === entry.assemblyId)
+    // 原构造仍在：确认当前最新校验值；已删除：以冻结校验值作为已确认标记。
+    const acknowledged = live ? assemblyChecksum(live) : entry.checksum
+    updateScheme({
+      entries: schemeDraft.value.entries.map((item) =>
+        item.id === entryId ? { ...item, acknowledgedChecksum: acknowledged } : item,
+      ),
+    })
+    notice.value = `已保留「${entry.name}」引用时的冻结版本（修订 ${entry.revision}），组合结果不变；保存后提示不再出现。`
+    error.value = ''
+  }
+
+  /** 更新引用：用原构造当前版本替换快照，结果随之改变，需用户显式确认。 */
+  function updateSchemeEntryReference(entryId: string) {
+    if (!schemeDraft.value || !data.value) return
+    const entry = schemeDraft.value.entries.find((item) => item.id === entryId)
+    const live = data.value.assemblies.find((item) => item.id === entry?.assemblyId)
+    if (!schemeDraft.value || !entry || !live) return
+    const refreshed = createEntry(live, data.value.materials, entry.area)
+    refreshed.id = entry.id
+    updateScheme({
+      entries: schemeDraft.value.entries.map((item) => (item.id === entryId ? refreshed : item)),
+    })
+    notice.value = `已将「${live.name}」更新为修订 ${live.revision} 的当前版本，结果已按新版本重算；确认后请保存组合。`
+    error.value = ''
+  }
+
+  async function saveScheme() {
+    if (!schemeDraft.value || !data.value) return
+    if (schemeFindings.value.length) {
+      error.value = schemeFindings.value[0].text
+      return
+    }
+    const candidate = clone(schemeDraft.value)
+    candidate.name = candidate.name.trim()
+    candidate.revision += 1
+    candidate.updatedAt = now()
+    const saved = await act((next) => {
+      const index = next.schemes.findIndex((item) => item.id === candidate.id)
+      if (index >= 0) {
+        next.schemes[index] = candidate
+      } else {
+        if (next.schemes.length >= 100) throw new Error('最多保存 100 个围护组合。')
+        next.schemes.push(candidate)
+      }
+    }, '围护组合已保存，引用版本与面积均已固定。')
+    if (saved) schemeDraft.value = clone(candidate)
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -263,7 +411,7 @@ export function useWorkspace() {
   }
 
   function beforeUnload(event: BeforeUnloadEvent) {
-    if (dirty.value) event.preventDefault()
+    if (anyDirty.value) event.preventDefault()
   }
 
   onMounted(() => {
@@ -279,6 +427,7 @@ export function useWorkspace() {
   return {
     data,
     draft,
+    schemeDraft,
     tab,
     notice,
     error,
@@ -286,9 +435,13 @@ export function useWorkspace() {
     busy,
     externalChange,
     dirty,
+    schemeDirty,
+    anyDirty,
     editable,
     findings,
     result,
+    schemeFindings,
+    schemeEvaluation,
     selectedDocuments,
     baselineId,
     alternativeId,
@@ -306,5 +459,14 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    selectScheme,
+    createSchemeDraft,
+    updateScheme,
+    addSchemeEntry,
+    updateSchemeEntry,
+    removeSchemeEntry,
+    keepSchemeEntry,
+    updateSchemeEntryReference,
+    saveScheme,
   }
 }

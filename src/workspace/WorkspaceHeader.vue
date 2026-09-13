@@ -5,8 +5,9 @@ const emit = defineEmits<{ navigate: [tab: WorkspaceTab] }>()
 const destinations: { id: WorkspaceTab; label: string; number: string }[] = [
   { id: 'design', label: '构造编辑', number: '01' },
   { id: 'compare', label: '方案比较', number: '02' },
-  { id: 'documents', label: '计算书', number: '03' },
-  { id: 'materials', label: '材料参数', number: '04' },
+  { id: 'schemes', label: '围护组合', number: '03' },
+  { id: 'documents', label: '计算书', number: '04' },
+  { id: 'materials', label: '材料参数', number: '05' },
 ]
 </script>
 
