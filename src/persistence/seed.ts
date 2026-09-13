@@ -21,5 +21,6 @@ export function seedData(): EnvelopeData {
     assemblies: [assembly],
     materials: clone(referenceMaterials),
     documents: [],
+    analyses: [],
   }
 }

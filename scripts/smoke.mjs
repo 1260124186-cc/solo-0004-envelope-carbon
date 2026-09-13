@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'sensitivity'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 sensitivity 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -32,7 +32,7 @@ try {
   assert.equal(await intensity.innerText(), '90.1')
 
   if (workflow === 'compose') {
-    await button('04 材料参数').click()
+    await button('05 材料参数').click()
     await button('＋ 自定义材料').click()
     await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')
@@ -101,11 +101,37 @@ try {
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     assert.notEqual(await intensity.innerText(), '90.1')
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+
+  if (workflow === 'sensitivity') {
+    await button('03 敏感性分析').click()
+    await page
+      .getByLabel('扫描参数', { exact: true })
+      .selectOption({ label: '岩棉板 · 单位质量碳因子' })
+    await page.getByLabel('扫描下限', { exact: true }).fill('0.5')
+    await page.getByLabel('扫描上限', { exact: true }).fill('5')
+    await page.getByLabel('扫描步长', { exact: true }).fill('0.5')
+    const total = page.locator('[data-check="sweep-total"]')
+    await total.waitFor()
+    assert.equal(await total.innerText(), '10')
+    assert.equal(await page.locator('[data-check="sweep-pass"]').innerText(), '7')
+    await page.getByText('由达标转为未达标').waitFor()
+    await button('保存本次分析').click()
+    await text('分析已保存，构造与物性快照可随时复核。').waitFor()
+    const saved = page.locator('[data-check="saved-run"]')
+    assert.equal(await saved.locator('[data-check="sweep-pass"]').innerText(), '7')
+    await button('01 构造编辑').click()
+    assert.equal(await intensity.innerText(), '90.1')
+    assert.equal(await page.getByLabel('当前构造', { exact: true }).locator('option').count(), 1)
+    await page.reload()
+    await button('03 敏感性分析').click()
+    await saved.waitFor()
+    assert.equal(await saved.locator('[data-check="sweep-pass"]').innerText(), '7')
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

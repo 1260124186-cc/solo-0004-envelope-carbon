@@ -5,6 +5,7 @@ import FeedbackBanner from './workspace/FeedbackBanner.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
+import SensitivityWorkspace from './sensitivity/SensitivityWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
@@ -35,6 +36,7 @@ const {
   finalize,
   reopen,
   addCustomMaterial,
+  saveAnalysis,
   alignAlternative,
 } = useWorkspace()
 </script>
@@ -103,6 +105,16 @@ const {
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
+        @design="tab = 'design'"
+      />
+      <SensitivityWorkspace
+        v-else-if="tab === 'sensitivity'"
+        :assemblies="data.assemblies"
+        :materials="data.materials"
+        :analyses="data.analyses"
+        :busy="busy"
+        :dirty="dirty"
+        @save="saveAnalysis"
         @design="tab = 'design'"
       />
       <DocumentWorkspace

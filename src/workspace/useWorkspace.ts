@@ -9,9 +9,10 @@ import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
+import type { SensitivityRun } from '../sensitivity/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'sensitivity' | 'documents' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -232,6 +233,13 @@ export function useWorkspace() {
     }, '自定义材料已保存，可在构造中选用。')
   }
 
+  async function saveAnalysis(run: SensitivityRun) {
+    await act((next) => {
+      if (next.analyses.length >= 100) throw new Error('最多保存 100 次敏感性分析。')
+      next.analyses.push(clone(run))
+    }, '分析已保存，构造与物性快照可随时复核。')
+  }
+
   async function alignAlternative() {
     if (dirty.value) {
       error.value = '请先保存当前构造，避免口径调整覆盖编辑内容。'
@@ -305,6 +313,7 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
+    saveAnalysis,
     alignAlternative,
   }
 }

@@ -29,6 +29,11 @@
       "responsibility": "替代方案同口径比较"
     },
     {
+      "id": "sensitivity",
+      "path": "src/sensitivity",
+      "responsibility": "单参数扫描与目标临界点分析"
+    },
+    {
       "id": "documents",
       "path": "src/documents",
       "responsibility": "不可变计算书与下载"
@@ -103,6 +108,26 @@
         "workspace",
         "carbon",
         "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "sensitivity",
+      "name": "敏感性分析",
+      "entry": "页面：敏感性分析 / 保存本次分析",
+      "steps": [
+        "选择已保存构造与扫描参数",
+        "设置下限上限步长并逐点计算",
+        "标出达标候选与目标边界临界点",
+        "冻结构造与物性保存为分析记录"
+      ],
+      "success": "记录可按冻结输入复核且原构造不变",
+      "failure": "范围越界或候选超限被拒绝",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "carbon",
+        "sensitivity",
         "persistence"
       ]
     }
