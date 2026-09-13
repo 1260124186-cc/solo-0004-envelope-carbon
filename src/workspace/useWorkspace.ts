@@ -2,16 +2,19 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
+import type { FactorRange, ScenarioKey, ScenarioStudy } from '../scenarios/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { createStudy } from '../scenarios/factory'
+import { validateStudy } from '../scenarios/validation'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'scenarios'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -24,6 +27,16 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  const studyDraft = shallowRef<ScenarioStudy | null>(null)
+  const persistedStudy = computed(() =>
+    data.value?.studies.find((item) => item.id === studyDraft.value?.id),
+  )
+  const studyDirty = computed(() =>
+    Boolean(
+      studyDraft.value && JSON.stringify(studyDraft.value) !== JSON.stringify(persistedStudy.value),
+    ),
+  )
+  const studyFindings = computed(() => (studyDraft.value ? validateStudy(studyDraft.value) : []))
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -52,7 +65,13 @@ export function useWorkspace() {
   }
 
   function mayDiscard(): boolean {
-    return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
+    if (dirty.value) {
+      return window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
+    }
+    if (studyDirty.value) {
+      return window.confirm('当前参数情景研究有未保存的修改，是否放弃这些修改？')
+    }
+    return true
   }
 
   function load(initial = false) {
@@ -60,10 +79,12 @@ export function useWorkspace() {
     try {
       const next = readData()
       const selectedId = draft.value?.id
+      const studyId = studyDraft.value?.id
       data.value = next
       draft.value = clone(
         next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null,
       )
+      studyDraft.value = clone(next.studies.find((item) => item.id === studyId) ?? null)
       baselineId.value = next.assemblies[0]?.id ?? ''
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
@@ -253,6 +274,105 @@ export function useWorkspace() {
     }
   }
 
+  function startStudy(assemblyId: string) {
+    if (busy.value || !mayDiscard()) return
+    const source = data.value?.assemblies.find((item) => item.id === assemblyId)
+    if (!source) {
+      error.value = '请先选择并保存一个构造，再建立参数情景研究。'
+      return
+    }
+    if (validateAssembly(source, data.value!.materials).length) {
+      error.value = '该构造参数不完整，无法建立参数情景研究。'
+      return
+    }
+    studyDraft.value = createStudy(source, data.value!.materials)
+    tab.value = 'scenarios'
+    clearFeedback()
+  }
+
+  function selectStudy(id: string) {
+    if (busy.value || !mayDiscard()) return
+    const selected = data.value?.studies.find((item) => item.id === id)
+    if (!selected) return
+    studyDraft.value = clone(selected)
+    clearFeedback()
+  }
+
+  function clearStudyDraft() {
+    if (busy.value || !mayDiscard()) return
+    studyDraft.value = null
+    clearFeedback()
+  }
+
+  function updateStudy(patch: Partial<ScenarioStudy>) {
+    if (!studyDraft.value || busy.value) return
+    studyDraft.value = { ...studyDraft.value, ...patch }
+    clearFeedback()
+  }
+
+  function updateStudyRange(materialId: string, key: ScenarioKey, value: number) {
+    if (!studyDraft.value || busy.value) return
+    const current = studyDraft.value.ranges[materialId]
+    if (!current) return
+    studyDraft.value = {
+      ...studyDraft.value,
+      ranges: {
+        ...studyDraft.value.ranges,
+        [materialId]: { ...current, [key]: value },
+      },
+    }
+    clearFeedback()
+  }
+
+  function resetStudyRange(materialId: string) {
+    if (!studyDraft.value || busy.value) return
+    const material = studyDraft.value.snapshot.materials.find((item) => item.id === materialId)
+    if (!material) return
+    const fallback: FactorRange = {
+      low: material.factor,
+      reference: material.factor,
+      high: material.factor,
+    }
+    studyDraft.value = {
+      ...studyDraft.value,
+      ranges: { ...studyDraft.value.ranges, [materialId]: fallback },
+    }
+    clearFeedback()
+  }
+
+  async function saveStudy() {
+    if (!studyDraft.value || !data.value || busy.value) return
+    if (studyFindings.value.length) {
+      error.value = studyFindings.value[0].text
+      return
+    }
+    const candidate = clone(studyDraft.value)
+    candidate.name = candidate.name.trim()
+    candidate.note = candidate.note.trim()
+    candidate.updatedAt = now()
+    const saved = await act((next) => {
+      const index = next.studies.findIndex((item) => item.id === candidate.id)
+      if (index >= 0) {
+        next.studies[index] = candidate
+      } else {
+        if (next.studies.length >= 200) throw new Error('最多保存 200 项参数情景研究。')
+        next.studies.push(candidate)
+      }
+    }, '参数情景研究已保存。范围仅属于本研究，材料目录与原构造未被修改。')
+    if (saved) studyDraft.value = clone(candidate)
+  }
+
+  async function removeStudy(id: string) {
+    if (busy.value || !data.value) return
+    if (!window.confirm('删除后无法恢复，确认删除这项参数情景研究？')) return
+    const saved = await act((next) => {
+      const index = next.studies.findIndex((item) => item.id === id)
+      if (index < 0) throw new Error('该参数情景研究已不存在。')
+      next.studies.splice(index, 1)
+    }, '参数情景研究已删除。')
+    if (saved && studyDraft.value?.id === id) studyDraft.value = null
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -263,7 +383,7 @@ export function useWorkspace() {
   }
 
   function beforeUnload(event: BeforeUnloadEvent) {
-    if (dirty.value) event.preventDefault()
+    if (dirty.value || studyDirty.value) event.preventDefault()
   }
 
   onMounted(() => {
@@ -292,6 +412,9 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    studyDraft,
+    studyDirty,
+    studyFindings,
     load,
     select,
     create,
@@ -306,5 +429,13 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    startStudy,
+    selectStudy,
+    clearStudyDraft,
+    updateStudy,
+    updateStudyRange,
+    resetStudyRange,
+    saveStudy,
+    removeStudy,
   }
 }

@@ -23,6 +23,7 @@ const emit = defineEmits<{
   save: []
   reopen: []
   finalize: []
+  study: []
 }>()
 </script>
 
@@ -56,6 +57,14 @@ const emit = defineEmits<{
           busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
         }}</span>
         <div class="actions">
+          <button
+            class="button"
+            :disabled="busy || dirty || !result"
+            title="冻结当前已保存构造与物性，开展碳因子低值、参考值、高值研究"
+            @click="emit('study')"
+          >
+            参数情景研究
+          </button>
           <template v-if="assembly.state === 'editing'">
             <button
               class="button"

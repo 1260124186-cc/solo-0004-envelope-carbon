@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'scenario'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 scenario 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -27,6 +27,8 @@ try {
   await page.goto(`http://127.0.0.1:${address.port}`)
   const button = (name) => page.getByRole('button', { name, exact: true })
   const text = (value) => page.getByText(value, { exact: true })
+  const notice = (value) => page.locator('.feedback.success', { hasText: value })
+  const contains = (value) => page.getByText(value, { exact: false })
   const intensity = page.locator('[data-check="intensity"]')
   await intensity.waitFor()
   assert.equal(await intensity.innerText(), '90.1')
@@ -106,6 +108,92 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'scenario') {
+    await button('＋ 新建构造').click()
+    await page.getByLabel('构造名称', { exact: true }).fill('双层混凝土情景样')
+    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '普通混凝土' })
+    await button('＋ 添加这一层').click()
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('100')
+    await page.getByLabel('第 1 层损耗', { exact: true }).fill('0')
+    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '普通混凝土' })
+    await button('＋ 添加这一层').click()
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('200')
+    await page.getByLabel('第 2 层损耗', { exact: true }).fill('0')
+    assert.equal(await intensity.innerText(), '93.6')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    await button('05 参数情景').click()
+    await text('给碳因子一个范围，而不是一个定值。').waitFor()
+    await page.getByLabel('选择用于新建研究的构造', { exact: true }).selectOption({
+      label: '双层混凝土情景样 · 编辑中 · 修订 1',
+    })
+    await button('建立研究').click()
+
+    const scenarioIntensities = page.locator('[data-check="scenario-intensity"]')
+    await scenarioIntensities.first().waitFor()
+    assert.equal(await scenarioIntensities.count(), 3)
+    assert.deepEqual(await scenarioIntensities.allInnerTexts(), ['93.6', '93.6', '93.6'])
+    // 同一材料被两层引用时必须共用同一组研究因子。
+    await contains('用于第 1、2 层 · 多层共用，保持一致').waitFor()
+
+    await page.getByLabel('普通混凝土碳因子低值', { exact: true }).fill('0.05')
+    await page.getByLabel('普通混凝土碳因子高值', { exact: true }).fill('0.4')
+    assert.deepEqual(await scenarioIntensities.allInnerTexts(), ['36', '93.6', '288'])
+    await contains('↗ 超出碳强度目标（≤ 150）').waitFor()
+    const exceeds = page.locator('.scenario-card.exceeded')
+    assert.equal(await exceeds.count(), 1)
+
+    // 低值高于参考值时必须阻止保存。
+    await page.getByLabel('普通混凝土碳因子低值', { exact: true }).fill('0.9')
+    await contains('碳因子需满足低值 ≤ 参考值 ≤ 高值').waitFor()
+    assert.equal(await button('保存研究').isEnabled(), false)
+    await page.getByLabel('普通混凝土碳因子低值', { exact: true }).fill('0.05')
+    await page.getByLabel('研究名称', { exact: true }).fill('混凝土因子区间试算')
+    await page
+      .getByLabel('研究假设', { exact: true })
+      .fill('冒烟流程：同一材料两层共用同一组因子。')
+    await button('保存研究').click()
+    await notice('参数情景研究已保存').waitFor()
+
+    // 研究不修改材料目录与原构造；来源构造此后保存新版本时，研究保留冻结版本并提示。
+    await button('01 构造编辑').click()
+    assert.equal(await intensity.innerText(), '93.6')
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('150')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    assert.notEqual(await intensity.innerText(), '93.6')
+    await button('05 参数情景').click()
+    await button('← 返回研究列表').click()
+    await button('重新打开').click()
+    await page.getByLabel('研究名称', { exact: true }).waitFor()
+    assert.deepEqual(await scenarioIntensities.allInnerTexts(), ['36', '93.6', '288'])
+    await contains('来源构造此后已有修改').waitFor()
+    assert.equal(
+      await page.getByLabel('研究假设', { exact: true }).inputValue(),
+      '冒烟流程：同一材料两层共用同一组因子。',
+    )
+
+    // 刷新后可重新打开，保留冻结物性、范围与假设。
+    await page.reload()
+    await button('05 参数情景').click()
+    await button('重新打开').click()
+    await page.getByLabel('研究名称', { exact: true }).waitFor()
+    assert.deepEqual(await scenarioIntensities.allInnerTexts(), ['36', '93.6', '288'])
+    assert.equal(
+      await page.getByLabel('普通混凝土碳因子低值', { exact: true }).inputValue(),
+      '0.05',
+    )
+    assert.equal(
+      await page.getByLabel('普通混凝土碳因子参考值', { exact: true }).inputValue(),
+      '0.13',
+    )
+    assert.equal(await page.getByLabel('普通混凝土碳因子高值', { exact: true }).inputValue(), '0.4')
+    assert.equal(
+      await page.getByLabel('研究假设', { exact: true }).inputValue(),
+      '冒烟流程：同一材料两层共用同一组因子。',
+    )
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

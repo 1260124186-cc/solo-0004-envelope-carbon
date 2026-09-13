@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "scenarios",
+      "path": "src/scenarios",
+      "responsibility": "碳因子低值参考高值的参数情景研究与冻结快照"
     }
   ],
   "complexity": {
@@ -103,6 +108,27 @@
         "workspace",
         "carbon",
         "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "scenario",
+      "name": "参数情景研究",
+      "entry": "页面：参数情景 / 新建参数情景研究",
+      "steps": [
+        "从已保存构造成立研究并冻结构造与物性",
+        "按材料填写碳因子低值、参考值与高值",
+        "计算三种情景强度、总量与目标达成并保存重开"
+      ],
+      "success": "多层引用同一材料共用同一组因子，研究保存刷新后可恢复",
+      "failure": "因子顺序错误或构造未保存时阻止成立或保存",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "assemblies",
+        "materials",
+        "carbon",
+        "scenarios",
         "persistence"
       ]
     }

@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import ScenarioWorkspace from './scenarios/ScenarioWorkspace.vue'
 const {
   data,
   draft,
@@ -22,6 +23,9 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  studyDraft,
+  studyDirty,
+  studyFindings,
   load,
   select,
   create,
@@ -36,6 +40,14 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  startStudy,
+  selectStudy,
+  clearStudyDraft,
+  updateStudy,
+  updateStudyRange,
+  resetStudyRange,
+  saveStudy,
+  removeStudy,
 } = useWorkspace()
 </script>
 
@@ -93,6 +105,7 @@ const {
         @save="save"
         @finalize="finalize"
         @reopen="reopen"
+        @study="startStudy(draft.id)"
       />
       <ComparisonWorkspace
         v-else-if="tab === 'compare'"
@@ -117,10 +130,27 @@ const {
         @design="tab = 'design'"
       />
       <MaterialWorkspace
-        v-else
+        v-else-if="tab === 'materials'"
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+      />
+      <ScenarioWorkspace
+        v-else
+        :assemblies="data.assemblies"
+        :studies="data.studies"
+        :draft="studyDraft"
+        :findings="studyFindings"
+        :busy="busy"
+        :dirty="studyDirty"
+        @start="startStudy"
+        @select="selectStudy"
+        @clear="clearStudyDraft"
+        @update="updateStudy"
+        @range="updateStudyRange"
+        @reset="resetStudyRange"
+        @save="saveStudy"
+        @remove="removeStudy"
       />
     </template>
     <div
