@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import BackupWorkspace from './backup/BackupWorkspace.vue'
 const {
   data,
   draft,
@@ -36,6 +37,7 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  restore,
 } = useWorkspace()
 </script>
 
@@ -117,10 +119,16 @@ const {
         @design="tab = 'design'"
       />
       <MaterialWorkspace
-        v-else
+        v-else-if="tab === 'materials'"
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+      />
+      <BackupWorkspace
+        v-else
+        :data="data"
+        :busy="busy"
+        :restore-backup="restore"
       />
     </template>
     <div

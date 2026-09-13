@@ -8,10 +8,12 @@ import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
-import { persistenceKey } from '../persistence/types'
+import { capacityLimits, persistenceKey } from '../persistence/types'
+import { applyMerge, mergeNotice } from '../backup/merge'
+import type { ConflictChoices } from '../backup/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'backup'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -170,7 +172,8 @@ export function useWorkspace() {
         requireEditable(next.assemblies[index])
         next.assemblies[index] = candidate
       } else {
-        if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
+        if (next.assemblies.length >= capacityLimits.assemblies)
+          throw new Error(`最多保存 ${capacityLimits.assemblies} 个构造。`)
         next.assemblies.push(candidate)
       }
     }, '构造已保存。')
@@ -186,7 +189,10 @@ export function useWorkspace() {
     const saved = await act((next) => {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
-      if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
+      if (next.documents.length >= capacityLimits.documents)
+        throw new Error(
+          `计算书已达到 ${capacityLimits.documents.toLocaleString('zh-CN')} 份容量上限。`,
+        )
       const document = createDocument(assembly, next.materials)
       next.documents.push(document)
       assembly.state = 'finalized'
@@ -223,7 +229,8 @@ export function useWorkspace() {
       return false
     }
     return act((next) => {
-      if (next.materials.length >= 500) throw new Error('最多保存 500 种材料。')
+      if (next.materials.length >= capacityLimits.materials)
+        throw new Error(`最多保存 ${capacityLimits.materials} 种材料。`)
       if (next.materials.some((material) => material.name.trim() === candidate.name.trim())) {
         throw new Error('材料名称已存在，请使用可区分的名称。')
       }
@@ -250,6 +257,31 @@ export function useWorkspace() {
     }, '替代构造已按基准统一部位、面积和年限。')
     if (saved && draft.value) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
+    }
+  }
+
+  async function restore(incoming: EnvelopeData, choices: ConflictChoices): Promise<boolean> {
+    if (!data.value || busy.value || fatal.value) return false
+    clearFeedback()
+    busy.value = true
+    let noticeText = ''
+    try {
+      data.value = await commitData(data.value.stamp, (next) => {
+        const merged = applyMerge(next, incoming, choices)
+        if (!merged.report.changes) throw new Error('备份中没有需要导入的内容。')
+        next.assemblies = merged.data.assemblies
+        next.materials = merged.data.materials
+        next.documents = merged.data.documents
+        noticeText = mergeNotice(merged.report)
+      })
+      externalChange.value = false
+      notice.value = noticeText
+      return true
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '恢复未完成，请重试。'
+      return false
+    } finally {
+      busy.value = false
     }
   }
 
@@ -306,5 +338,6 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    restore,
   }
 }
