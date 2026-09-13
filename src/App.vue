@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import TakeoffWorkspace from './takeoff/TakeoffWorkspace.vue'
 const {
   data,
   draft,
@@ -103,6 +104,14 @@ const {
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
+        @design="tab = 'design'"
+      />
+      <TakeoffWorkspace
+        v-else-if="tab === 'takeoff'"
+        :assemblies="data.assemblies"
+        :materials="data.materials"
+        :busy="busy"
+        :dirty="dirty"
         @design="tab = 'design'"
       />
       <DocumentWorkspace
