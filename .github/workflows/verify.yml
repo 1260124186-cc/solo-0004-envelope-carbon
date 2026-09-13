@@ -1,0 +1,47 @@
+# 从干净环境按统一顺序执行验证，与本地 `npm run verify` 完全一致：
+# 格式检查 → 严格类型检查 → 生产构建 → compose / compare / document 三条页面冒烟检查。
+# 任一步失败都会带着该步骤的退出码（10–15）失败，CI 日志中可通过 ✓/✗ 横幅定位步骤。
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送自动取消仍在运行的旧检查。
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # README 声明支持 Node.js 20.19+ 与 22.12+，两个系列各取满足下限的最低版本。
+        node-version: ['20.19.0', '22.12.0']
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          # 依据 package-lock.json 配置 npm 缓存；依赖安装仍严格使用 `npm ci`。
+          cache: npm
+
+      - name: 安装依赖（npm ci，干净环境）
+        run: npm ci
+
+      - name: 准备 Playwright Chromium 及系统依赖
+        # --with-deps 需要 sudo 安装 Chromium 的系统库（libnspr4/libnss3/libgbm 等），
+        # GitHub 提供的 runner 上可用；本地精简容器请按 README 说明准备。
+        run: npx playwright install --with-deps chromium
+
+      - name: 统一验证（格式 / 类型检查 / 构建 / 三条页面冒烟检查）
+        run: npm run verify

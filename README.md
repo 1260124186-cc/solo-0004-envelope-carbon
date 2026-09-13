@@ -53,22 +53,70 @@ npm run preview
 
 初始化阶段保留三条有界生产冒烟检查，它们启动临时生产预览和独立浏览器上下文，经真实页面入口操作并验证可见结果，不调用内部领域函数替代页面动作。检查使用独立源，不接触开发预览里的已有设计。
 
-先准备浏览器（仅首次需要网络）：
+### 从干净环境开始
 
 ```sh
+# 1. 安装依赖（锁文件为 npm v1 格式，须用 npm ci；Node.js 20.19+ 或 22.12+）
+npm ci
+
+# 2. 准备 Playwright Chromium（仅首次需要网络）
 npx playwright install chromium
 ```
 
-然后执行：
+在精简 Linux 环境（容器、CI 基础镜像）上，Chromium 还需要系统库（`libnspr4`、`libnss3`、`libgbm1` 等）。有 root 权限时直接一并安装：
 
 ```sh
+sudo npx playwright install-deps chromium
+# 或浏览器与系统库一起准备：
+sudo npx playwright install --with-deps chromium
+```
+
+无 root 权限时请使用已装好这些库的基础镜像，或通过 `CHROMIUM_PATH` 指向一个已安装的兼容 Chromium（见文末环境变量说明）。
+
+### 统一验证命令
+
+准备完成后，一条命令按固定顺序串行执行全部检查：
+
+```sh
+npm run verify
+```
+
+执行顺序为：格式检查 → 严格类型检查（`vue-tsc --noEmit`）→ 生产构建（`vite build`）→ `compose` → `compare` → `document` 三条页面冒烟检查。生产构建排在冒烟之前，因为冒烟检查通过 `vite preview` 运行 `dist/` 产物。
+
+每一步都有 `=== 开始：… ===` 横幅与 `✓/✗` 标记，可直接从日志看出失败位置；任一步失败立即终止，并以该步骤专用退出码失败（成功退出码为 0）：
+
+| 失败步骤 | 退出码 |
+| --- | --- |
+| 格式检查 | 10 |
+| 严格类型检查 | 11 |
+| 生产构建 | 12 |
+| 冒烟 · 构造编辑 compose | 13 |
+| 冒烟 · 方案比较 compare | 14 |
+| 冒烟 · 计算书 document | 15 |
+
+GitHub 上的每次推送与 Pull Request 都由 `.github/workflows/verify.yml` 从干净环境（`npm ci` → Playwright 浏览器与系统库准备 → `npm run verify`）按同一顺序自动执行，覆盖 Node.js 20.19 与 22.12 两个版本系列。
+
+### 保留的单独命令（用于定位问题）
+
+统一命令之外，原有单独命令仍然保留，可按需直接运行：
+
+```sh
+# 格式检查
+npm run format:check
+
+# 仅严格类型检查
+npm run typecheck
+
+# 类型检查 + 生产构建（现有命令，保持不变）
 npm run build
+
+# 三条页面冒烟检查，每条最多 60 秒，自动关闭浏览器与临时服务
 npm run smoke -- compose
 npm run smoke -- compare
 npm run smoke -- document
 ```
 
-每条冒烟检查最多运行 60 秒，自动关闭浏览器与临时服务。检查内容分别为构造创建及无效厚度阻止保存、刷新恢复；材料替代与不同口径保护；定稿锁定、计算书下载、重新编辑及历史冻结。没有 `npm test` 命令。
+注意冒烟检查依赖已构建的 `dist/`；单独运行前请先执行一次 `npm run build`（`npm run verify` 会自动保证这一顺序）。检查内容分别为构造创建及无效厚度阻止保存、刷新恢复；材料替代与不同口径保护；定稿锁定、计算书下载、重新编辑及历史冻结。没有 `npm test` 命令。
 
 ## 目录
 
@@ -91,7 +139,8 @@ npm run smoke -- document
 锁文件使用 npm 支持的版本 1 格式，固定依赖解析，`.npmrc` 保持重建格式一致。使用 `npm ci` 安装；不要将宿主系统的依赖目录复制到不同系统。
 
 ```sh
-npx prettier --check 'src/**/*.{ts,vue,css}' vite.config.ts
+npm run format:check
+# 等价于：npx prettier --check 'src/**/*.{ts,vue,css}' vite.config.ts
 ```
 
 统一项目名：`solo-0004-envelope-carbon`。容器副本目标为 `/workspace/solo-0004-envelope-carbon`，不附带宿主机依赖和构建输出，在容器内先执行 `npm ci`。
