@@ -6,6 +6,8 @@ import { auditLimit, type AuditAction, type AuditTargetKind } from '../audit/aud
 import { currentActor } from '../audit/actor'
 import { clone, newId, now } from '../shared/identity'
 
+const quotaFailure = '浏览器保存失败，可能空间不足或存储被禁用。本次修改仍保留在编辑区。'
+
 export function readData(): EnvelopeData {
   const raw = localStorage.getItem(persistenceKey)
   return raw === null ? seedData() : decode(raw)
@@ -43,13 +45,54 @@ function nextAudit(
   if (data.audit.length > auditLimit) data.audit.splice(0, data.audit.length - auditLimit)
 }
 
-function persist(data: EnvelopeData): void {
-  // 写回前再次解码自检：损坏内容（含日志）不会进入存储。
+function storageFull(cause: unknown): boolean {
+  // QuotaExceededError 在不同浏览器里可能是 code 22 或 name 1014。
+  return (
+    (cause instanceof DOMException &&
+      (cause.name === 'QuotaExceededError' ||
+        cause.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        cause.code === 22 ||
+        cause.code === 1014)) ||
+    (cause instanceof Error && /quota|storage|空间/i.test(cause.message))
+  )
+}
+
+/**
+ * 写入数据并在空间不足时按“业务数据优先、日志从旧到新舍弃”的顺序降级重试：
+ * 1. 先尝试完整写入（业务变更 + 全部审计）；
+ * 2. 空间不足时反复丢弃最旧的一半审计后重试，新条目（含本次动作）最晚被舍弃；
+ * 3. 只剩本次新条目仍放不下时，清空审计再试一次以保住业务变更。
+ *
+ * 每一次重试写入的仍是同键的一个完整状态，因此审计保留部分的相对顺序
+ * 始终等于锁提交顺序，跨标签页不会颠倒。返回实际写入的数据；彻底失败时抛出
+ * 统一的保存失败提示。
+ */
+function writeWithAuditDegradation(data: EnvelopeData): EnvelopeData {
+  // 写回前先自检：损坏内容（含日志）不会进入存储。
   decode(JSON.stringify(data))
-  try {
-    localStorage.setItem(persistenceKey, JSON.stringify(data))
-  } catch {
-    throw new Error('浏览器保存失败，可能空间不足或存储被禁用。本次修改仍保留在编辑区。')
+  const attempt = (candidate: EnvelopeData): boolean => {
+    try {
+      localStorage.setItem(persistenceKey, JSON.stringify(candidate))
+      return true
+    } catch (cause) {
+      if (!storageFull(cause)) throw new Error(quotaFailure)
+      return false
+    }
+  }
+  const working = data
+  while (true) {
+    if (attempt(working)) return working
+    if (working.audit.length === 0) throw new Error(quotaFailure)
+    if (working.audit.length === 1) {
+      // 只剩本次新条目仍放不下：先清空日志保住业务变更；再失败则整体失败。
+      const businessOnly = clone(working)
+      businessOnly.audit = []
+      if (attempt(businessOnly)) return businessOnly
+      throw new Error(quotaFailure)
+    }
+    // 截断最旧的一半，至少丢弃一条；新条目始终留在数组末尾。
+    const drop = Math.max(1, Math.floor(working.audit.length / 2))
+    working.audit.splice(0, drop)
   }
 }
 
@@ -57,7 +100,8 @@ function persist(data: EnvelopeData): void {
  * 只记录一次被拒绝的尝试（校验失败、跨标签页冲突等），不修改业务数据。
  * 仍在同一互斥锁内追加，保证拒绝与成功动作共享同一条全局时间线。
  * 仅审计写入不更换修订标识，不影响其他标签页的并发保存校验。
- * 审计自身写不进去（如存储已满）时静默放弃，不干扰原有操作反馈。
+ * 容量不足时从最旧日志开始舍弃；审计最终也写不进去时静默放弃，
+ * 绝不干扰原有操作反馈。
  */
 export async function recordRejection(intent: AuditIntent, reason: string): Promise<void> {
   if (!navigator.locks) return
@@ -76,26 +120,10 @@ export async function recordRejection(intent: AuditIntent, reason: string): Prom
         reason,
       })
       // 不变更 stamp：其他标签页不会因此被迫重新加载。
-      persistAuditOnly(latest)
+      writeWithAuditDegradation(latest)
     })
   } catch {
     // 审计写入失败不能影响原操作流程与提示。
-  }
-}
-
-function persistAuditOnly(data: EnvelopeData): void {
-  try {
-    localStorage.setItem(persistenceKey, JSON.stringify(data))
-  } catch {
-    // 容量不足时丢弃最旧条目重试一次；仍失败则放弃本次审计。
-    if (data.audit.length > 100) {
-      data.audit.splice(0, 100)
-      try {
-        localStorage.setItem(persistenceKey, JSON.stringify(data))
-      } catch {
-        // 放弃记录，但不抛出：业务操作反馈优先。
-      }
-    }
   }
 }
 
@@ -103,6 +131,8 @@ function persistAuditOnly(data: EnvelopeData): void {
  * 原子提交一次业务变更并追加成功审计。
  * 锁内核对修订标识；冲突或变更函数抛错时，同样在锁序列内追加“已拒绝”条目后
  * 把原始错误抛回给调用方，业务数据绝不部分写入。
+ * 成功提交若遭遇存储容量上限，会优先保住业务变更、从最旧日志起截断重试；
+ * 仍失败时沿用原有保存失败提示。
  */
 export async function commitData(
   expectedStamp: string,
@@ -127,7 +157,7 @@ export async function commitData(
         reason,
       })
       // 拒绝只写日志：保持 stamp 不变，避免无谓的跨标签页重新加载提示。
-      persistAuditOnly(latest)
+      writeWithAuditDegradation(latest)
       throw new Error(reason)
     }
     if (latest.stamp !== expectedStamp) {
@@ -151,7 +181,8 @@ export async function commitData(
       detail: intent.detail ?? '',
       reason: '',
     })
-    persist(candidate)
-    return candidate
+    // 业务变更优先：容量不够时从最旧日志开始舍弃，新条目最后才丢弃；
+    // 极端情况下允许只保住业务变更。返回实际写入的状态供内存同步。
+    return writeWithAuditDegradation(candidate)
   })
 }

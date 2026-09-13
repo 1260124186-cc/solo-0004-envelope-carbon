@@ -19,6 +19,10 @@
     {
       "workflow_id": "document",
       "command": "npm run smoke -- document"
+    },
+    {
+      "workflow_id": "capacity",
+      "command": "npm run smoke -- capacity"
     }
   ]
 }
