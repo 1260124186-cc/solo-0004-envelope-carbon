@@ -13,6 +13,7 @@ defineProps<{
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  canCapture: boolean
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   save: []
   reopen: []
   finalize: []
+  captureTemplate: []
 }>()
 </script>
 
@@ -52,9 +54,20 @@ const emit = defineEmits<{
         @add="emit('addLayer', $event)"
       />
       <div class="design-footer">
-        <span class="save-indicator">{{
-          busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
-        }}</span>
+        <div class="footer-side">
+          <span class="save-indicator">{{
+            busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
+          }}</span>
+          <button
+            type="button"
+            class="button small"
+            :disabled="busy || !canCapture"
+            title="把当前材料层组合保存为可复用模板，不包含面积、定稿状态与计算书"
+            @click="emit('captureTemplate')"
+          >
+            存为构造模板
+          </button>
+        </div>
         <div class="actions">
           <template v-if="assembly.state === 'editing'">
             <button
@@ -127,6 +140,12 @@ const emit = defineEmits<{
   font-size: 11px;
   color: var(--muted);
 }
+.footer-side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
 @media (max-width: 1000px) {
   .design-grid {
     grid-template-columns: 1fr;
@@ -139,6 +158,9 @@ const emit = defineEmits<{
   .design-footer {
     flex-direction: column;
     align-items: stretch;
+  }
+  .footer-side {
+    justify-content: space-between;
   }
 }
 </style>

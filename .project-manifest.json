@@ -14,6 +14,11 @@
       "responsibility": "构造层编辑与领域约束"
     },
     {
+      "id": "templates",
+      "path": "src/templates",
+      "responsibility": "构造模板的层组合快照、查找、预览与套用阻断"
+    },
+    {
       "id": "carbon",
       "path": "src/carbon",
       "responsibility": "碳排放及热阻计算"
@@ -40,71 +45,53 @@
     }
   ],
   "complexity": {
-    "mechanisms": [
-      "state_transition",
-      "error_propagation",
-      "concurrency",
-      "resource_lifecycle"
-    ]
+    "mechanisms": ["state_transition", "error_propagation", "concurrency", "resource_lifecycle"]
   },
   "workflows": [
     {
       "id": "compose",
       "name": "构造编辑",
       "entry": "页面：构造编辑 / 保存构造",
-      "steps": [
-        "输入面积、寿命与构造层",
-        "校验材料和物理边界",
-        "原子保存并恢复"
-      ],
+      "steps": ["输入面积、寿命与构造层", "校验材料和物理边界", "原子保存并恢复"],
       "success": "保存后刷新可恢复",
       "failure": "边界错误阻止保存",
       "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
-      "module_ids": [
-        "workspace",
-        "assemblies",
-        "carbon",
-        "persistence"
-      ]
+      "module_ids": ["workspace", "assemblies", "carbon", "persistence"]
     },
     {
       "id": "compare",
       "name": "替代方案",
       "entry": "页面：方案比较 / 复制为替代方案",
-      "steps": [
-        "复制基准构造",
-        "修改材料与厚度",
-        "按相同面积寿命比较结果"
-      ],
+      "steps": ["复制基准构造", "修改材料与厚度", "按相同面积寿命比较结果"],
       "success": "呈现可追溯的差值",
       "failure": "不同口径阻止比较",
       "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
-      "module_ids": [
-        "workspace",
-        "assemblies",
-        "carbon",
-        "comparison",
-        "persistence"
-      ]
+      "module_ids": ["workspace", "assemblies", "carbon", "comparison", "persistence"]
     },
     {
       "id": "document",
       "name": "计算书定稿",
       "entry": "页面：计算书 / 生成定稿",
-      "steps": [
-        "校验有效构造",
-        "计算并冻结输入输出",
-        "下载计算书并重新开启编辑"
-      ],
+      "steps": ["校验有效构造", "计算并冻结输入输出", "下载计算书并重新开启编辑"],
       "success": "生成不可变版本且编辑锁定",
       "failure": "无效或重复定稿被拒绝",
       "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
-      "module_ids": [
-        "workspace",
-        "carbon",
-        "documents",
-        "persistence"
-      ]
+      "module_ids": ["workspace", "carbon", "documents", "persistence"]
+    },
+    {
+      "id": "template",
+      "name": "构造模板",
+      "entry": "页面：构造模板 / 存为构造模板 / 预览并套用",
+      "steps": [
+        "从构造截取材料层组合并填写模板信息",
+        "查找、修改或删除模板",
+        "预览后生成独立的编辑中构造",
+        "材料引用缺失时阻断套用并指出层序"
+      ],
+      "success": "生成的构造与模板相互独立，模板变更不影响已生成构造",
+      "failure": "引用材料不可用时阻止直接套用",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": ["workspace", "assemblies", "templates", "persistence"]
     }
   ]
 }

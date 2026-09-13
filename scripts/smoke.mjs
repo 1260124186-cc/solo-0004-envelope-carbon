@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'template'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 template 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,68 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'template') {
+    // 由当前构造截取层组合保存为模板，不携带面积、定稿状态与计算书。
+    await button('存为构造模板').click()
+    await page.getByLabel('模板名称', { exact: true }).fill('冒烟外墙模板')
+    await page.getByLabel('使用说明', { exact: true }).fill('冒烟流程模板说明')
+    await button('保存构造模板').click()
+    await text('构造模板已保存。').waitFor()
+
+    // 查找：按名称过滤，并统计模板总数（含初始模板）。
+    await page.getByPlaceholder('模板名称或使用说明').fill('冒烟外墙模板')
+    await text('1 / 2 个模板').waitFor()
+
+    // 先预览，再生成独立的编辑中构造（保持筛选，使模板卡片唯一）。
+    await button('预览并套用').click()
+    await page.getByText('材料层组合（室外到室内）· 共 4 层').waitFor()
+    await button('生成独立构造').click()
+    await page.getByText('已由模板「冒烟外墙模板」生成独立的编辑中构造').waitFor()
+    assert.equal(
+      await page.getByLabel('构造名称', { exact: true }).inputValue(),
+      '模板 · 冒烟外墙模板',
+    )
+    assert.equal(await page.getByLabel('第 2 层厚度', { exact: true }).inputValue(), '100')
+    assert.equal(await button('＋ 新建构造').isVisible(), true)
+    assert.equal(await button('复制为替代方案').isVisible(), true)
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await page.reload()
+    await page
+      .getByLabel('当前构造', { exact: true })
+      .selectOption({ label: '模板 · 冒烟外墙模板 · 编辑中' })
+    assert.equal(await page.getByLabel('第 2 层厚度', { exact: true }).inputValue(), '100')
+
+    // 修改模板不影响已生成的构造。
+    await button('05 构造模板').click()
+    await page.getByPlaceholder('模板名称或使用说明').fill('冒烟外墙模板')
+    await button('修改').click()
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('160')
+    await button('保存模板修改').click()
+    await text('构造模板已更新，已由它生成的构造保持不变。').waitFor()
+    await button('01 构造编辑').click()
+    await page
+      .getByLabel('当前构造', { exact: true })
+      .selectOption({ label: '模板 · 冒烟外墙模板 · 编辑中' })
+    assert.equal(await page.getByLabel('第 2 层厚度', { exact: true }).inputValue(), '100')
+
+    // 材料引用不可用：存储中构造一个缺失引用，解码仍允许，套用时必须阻断并指出层序。
+    await page.evaluate((key) => {
+      const saved = JSON.parse(localStorage.getItem(key))
+      const target = saved.templates.find((item) => item.name === '冒烟外墙模板')
+      target.layers[0].materialId = 'env-missing-smoke'
+      saved.stamp = 'smoke-broken-template'
+      localStorage.setItem(key, JSON.stringify(saved))
+    }, 'solo-0004-envelope-carbon:design:v1')
+    await page.reload()
+    await button('05 构造模板').click()
+    await page.getByPlaceholder('模板名称或使用说明').fill('冒烟外墙模板')
+    await page.getByText('第 1 层材料引用不可用，暂不能套用。').waitFor()
+    await button('预览并套用').click()
+    await page.getByText('材料引用不可用，无法直接套用').waitFor()
+    await page.getByText('第 1 层引用的材料（env-missing-smoke）已不存在').waitFor()
+    assert.equal(await button('生成独立构造').isDisabled(), true)
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

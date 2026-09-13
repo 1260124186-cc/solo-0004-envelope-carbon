@@ -1,6 +1,9 @@
 import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
+import { validateTemplate } from '../templates/validation'
+import type { ConstructionTemplate } from '../templates/types'
+import { templateCapacity } from '../templates/types'
 import { calculate } from '../carbon/engine'
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -30,17 +33,28 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
-    const data = parsed as unknown as EnvelopeData
+    // 模板在旧版本数据中不存在，缺省视为空集合，保持向后兼容。
+    if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) {
+      throw new Error('模板结构不完整。')
+    }
+    const data: EnvelopeData = {
+      ...(parsed as unknown as EnvelopeData),
+      templates: Array.isArray(parsed.templates)
+        ? (parsed.templates as ConstructionTemplate[])
+        : [],
+    }
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.templates.length > templateCapacity
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.templates, '构造模板')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -52,6 +66,16 @@ export function decode(raw: string): EnvelopeData {
         throw new Error('修订号无效。')
       if (!Number.isFinite(Date.parse(assembly.updatedAt))) throw new Error('构造时间无效。')
       if (validateAssembly(assembly, data.materials).length) throw new Error('构造参数无效。')
+    }
+    for (const template of data.templates) {
+      // 模板允许材料引用暂时缺失，只校验结构；引用缺失在套用时阻断。
+      if (validateTemplate(template).length) throw new Error('构造模板参数无效。')
+      if (
+        !Number.isFinite(Date.parse(template.createdAt)) ||
+        !Number.isFinite(Date.parse(template.updatedAt))
+      ) {
+        throw new Error('构造模板时间无效。')
+      }
     }
     for (const document of data.documents) {
       if (document.assemblyId !== document.assembly.id || document.assembly.state !== 'finalized') {

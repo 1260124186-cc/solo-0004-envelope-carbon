@@ -9,9 +9,17 @@ import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
+import type { ConstructionTemplate } from '../templates/types'
+import { templateCapacity } from '../templates/types'
+import { createTemplate, instantiateTemplate } from '../templates/factory'
+import {
+  missingTemplateMaterials,
+  unavailableTemplateMessage,
+  validateTemplate,
+} from '../templates/validation'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'templates'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -24,6 +32,8 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  const templateDraft = ref<ConstructionTemplate | null>(null)
+  const previewId = shallowRef('')
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -68,6 +78,8 @@ export function useWorkspace() {
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
       externalChange.value = false
+      templateDraft.value = null
+      previewId.value = ''
       clearFeedback()
       if (!initial) notice.value = '已重新加载保存版本。'
     } catch (cause) {
@@ -253,6 +265,200 @@ export function useWorkspace() {
     }
   }
 
+  // —— 构造模板 ——
+
+  const templateFindings = computed(() =>
+    templateDraft.value ? validateTemplate(templateDraft.value) : [],
+  )
+
+  /** 从当前构造截取层组合，进入模板表单；不继承面积、名称、定稿状态或计算书。 */
+  function captureTemplate() {
+    if (busy.value || !draft.value || !data.value) return
+    if (!draft.value.layers.length) {
+      error.value = '当前构造还没有材料层，无法保存为模板。'
+      return
+    }
+    templateDraft.value = createTemplate(
+      draft.value,
+      draft.value.name.trim() ? draft.value.name.slice(0, 50) : '未命名模板',
+      draft.value.surface,
+      draft.value.note.trim().slice(0, 500),
+    )
+    clearFeedback()
+    tab.value = 'templates'
+  }
+
+  function blankTemplate() {
+    if (busy.value) return
+    const stamp = now()
+    templateDraft.value = {
+      id: '',
+      name: '',
+      surface: 'wall',
+      usage: '',
+      layers: [],
+      createdAt: stamp,
+      updatedAt: stamp,
+    }
+    clearFeedback()
+  }
+
+  function editTemplate(id: string) {
+    if (busy.value) return
+    const target = data.value?.templates.find((item) => item.id === id)
+    if (!target) return
+    templateDraft.value = clone(target)
+    clearFeedback()
+  }
+
+  function cancelTemplateForm() {
+    templateDraft.value = null
+    clearFeedback()
+  }
+
+  function updateTemplateDraft(patch: Partial<ConstructionTemplate>) {
+    if (!templateDraft.value || busy.value) return
+    templateDraft.value = { ...templateDraft.value, ...patch }
+    clearFeedback()
+  }
+
+  function updateTemplateLayer(index: number, patch: Partial<Layer>) {
+    if (!templateDraft.value) return
+    const layers = templateDraft.value.layers.map((layer, current) =>
+      current === index ? { ...layer, ...patch } : layer,
+    )
+    templateDraft.value = { ...templateDraft.value, layers }
+  }
+
+  function removeTemplateLayer(index: number) {
+    if (!templateDraft.value) return
+    templateDraft.value = {
+      ...templateDraft.value,
+      layers: templateDraft.value.layers.filter((_, current) => current !== index),
+    }
+  }
+
+  function moveTemplateLayer(index: number, direction: -1 | 1) {
+    if (!templateDraft.value) return
+    const destination = index + direction
+    const layers = [...templateDraft.value.layers]
+    if (destination < 0 || destination >= layers.length) return
+    const current = layers[index]
+    layers[index] = layers[destination]
+    layers[destination] = current
+    templateDraft.value = { ...templateDraft.value, layers }
+  }
+
+  function addTemplateLayer(material: Material) {
+    if (!templateDraft.value || busy.value) return
+    if (templateDraft.value.layers.length >= 20) {
+      error.value = '单个模板最多包含 20 层。'
+      return
+    }
+    templateDraft.value = {
+      ...templateDraft.value,
+      layers: [
+        ...templateDraft.value.layers,
+        {
+          materialId: material.id,
+          thickness: material.kind === 'structure' ? 200 : 20,
+          loss: 3,
+          lifespan: material.lifespan,
+        },
+      ],
+    }
+  }
+
+  async function saveTemplate() {
+    if (!templateDraft.value || !data.value || busy.value) return
+    const candidate = clone(templateDraft.value)
+    candidate.name = candidate.name.trim()
+    candidate.usage = candidate.usage.trim()
+    if (validateTemplate(candidate).length) {
+      error.value = validateTemplate(candidate)[0].text
+      return
+    }
+    // 新截取的模板在保存前也带有客户端标识，是否“已保存”以内存集合为准。
+    const isExisting = data.value.templates.some((item) => item.id === candidate.id)
+    const saved = await act(
+      (next) => {
+        const index = next.templates.findIndex((item) => item.id === candidate.id)
+        if (index >= 0) {
+          // 模板修改只覆盖模板自身；由旧模板生成的构造是独立副本，不受影响。
+          candidate.createdAt = next.templates[index].createdAt
+          candidate.updatedAt = now()
+          next.templates[index] = candidate
+        } else {
+          if (next.templates.length >= templateCapacity) {
+            throw new Error(`最多保存 ${templateCapacity} 个构造模板。`)
+          }
+          candidate.id = newId('tpl')
+          candidate.updatedAt = now()
+          next.templates.push(candidate)
+        }
+      },
+      isExisting ? '构造模板已更新，已由它生成的构造保持不变。' : '构造模板已保存。',
+    )
+    if (saved) templateDraft.value = null
+  }
+
+  async function deleteTemplate(id: string) {
+    if (busy.value) return
+    const target = data.value?.templates.find((item) => item.id === id)
+    if (!target) return
+    if (
+      !window.confirm(
+        `删除模板「${target.name}」后无法恢复。已由该模板生成的构造是独立副本，不会被删除。是否继续？`,
+      )
+    ) {
+      return
+    }
+    const saved = await act((next) => {
+      next.templates = next.templates.filter((item) => item.id !== id)
+    }, '构造模板已删除，已生成的构造保持不变。')
+    if (saved && templateDraft.value?.id === id) templateDraft.value = null
+    if (previewId.value === id) previewId.value = ''
+  }
+
+  function openPreview(id: string) {
+    if (busy.value) return
+    if (!data.value?.templates.some((item) => item.id === id)) return
+    clearFeedback()
+    previewId.value = id
+  }
+
+  function closePreview() {
+    previewId.value = ''
+    clearFeedback()
+  }
+
+  const previewTemplate = computed(
+    () => data.value?.templates.find((item) => item.id === previewId.value) ?? null,
+  )
+
+  const previewMissing = computed(() =>
+    previewTemplate.value && data.value
+      ? missingTemplateMaterials(previewTemplate.value.layers, data.value.materials)
+      : [],
+  )
+
+  /** 先预览再套用；材料引用不可用时阻止，并指出具体哪一层需要处理。 */
+  function applyPreview() {
+    if (busy.value || !previewTemplate.value || !data.value) return
+    const template = previewTemplate.value
+    const missing = missingTemplateMaterials(template.layers, data.value.materials)
+    if (missing.length) {
+      error.value = unavailableTemplateMessage(template.layers, data.value.materials)
+      return
+    }
+    if (!mayDiscard()) return
+    draft.value = instantiateTemplate(template)
+    previewId.value = ''
+    tab.value = 'design'
+    clearFeedback()
+    notice.value = `已由模板「${template.name}」生成独立的编辑中构造，可继续调整层、面积与年限。`
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -292,6 +498,11 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    templateDraft,
+    templateFindings,
+    previewId,
+    previewTemplate,
+    previewMissing,
     load,
     select,
     create,
@@ -306,5 +517,19 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    captureTemplate,
+    blankTemplate,
+    editTemplate,
+    cancelTemplateForm,
+    updateTemplateDraft,
+    updateTemplateLayer,
+    removeTemplateLayer,
+    moveTemplateLayer,
+    addTemplateLayer,
+    saveTemplate,
+    deleteTemplate,
+    openPreview,
+    closePreview,
+    applyPreview,
   }
 }

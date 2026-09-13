@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import TemplateWorkspace from './templates/TemplateWorkspace.vue'
 const {
   data,
   draft,
@@ -22,6 +23,10 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  templateDraft,
+  templateFindings,
+  previewTemplate,
+  previewMissing,
   load,
   select,
   create,
@@ -36,6 +41,20 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  captureTemplate,
+  blankTemplate,
+  editTemplate,
+  cancelTemplateForm,
+  updateTemplateDraft,
+  updateTemplateLayer,
+  removeTemplateLayer,
+  moveTemplateLayer,
+  addTemplateLayer,
+  saveTemplate,
+  deleteTemplate,
+  openPreview,
+  closePreview,
+  applyPreview,
 } = useWorkspace()
 </script>
 
@@ -85,6 +104,7 @@ const {
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
+        :can-capture="draft.layers.length > 0"
         @update="update"
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
@@ -93,6 +113,7 @@ const {
         @save="save"
         @finalize="finalize"
         @reopen="reopen"
+        @capture-template="captureTemplate"
       />
       <ComparisonWorkspace
         v-else-if="tab === 'compare'"
@@ -117,10 +138,33 @@ const {
         @design="tab = 'design'"
       />
       <MaterialWorkspace
-        v-else
+        v-else-if="tab === 'materials'"
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+      />
+      <TemplateWorkspace
+        v-else
+        :templates="data.templates"
+        :materials="data.materials"
+        :busy="busy"
+        :template-draft="templateDraft"
+        :findings="templateFindings"
+        :preview="previewTemplate"
+        :preview-missing="previewMissing"
+        @blank="blankTemplate"
+        @edit="editTemplate"
+        @remove="deleteTemplate"
+        @preview="openPreview"
+        @close-preview="closePreview"
+        @apply="applyPreview"
+        @cancel-form="cancelTemplateForm"
+        @submit-form="saveTemplate"
+        @update-draft="updateTemplateDraft"
+        @update-layer="updateTemplateLayer"
+        @remove-layer="removeTemplateLayer"
+        @move-layer="moveTemplateLayer"
+        @add-layer="addTemplateLayer"
       />
     </template>
     <div
