@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import AuditLogView from './audit/AuditLogView.vue'
 const {
   data,
   draft,
@@ -22,6 +23,8 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  auditEntries,
+  actor,
   load,
   select,
   create,
@@ -67,8 +70,13 @@ const {
         :busy="busy"
         @reload="load()"
       />
+      <AuditLogView
+        v-if="tab === 'audit'"
+        :entries="auditEntries"
+        :current-actor="actor"
+      />
       <AssemblyPicker
-        v-if="tab === 'design' || tab === 'documents'"
+        v-else-if="tab === 'design' || tab === 'documents'"
         :assemblies="data.assemblies"
         :selected-id="draft.id"
         :busy="busy"

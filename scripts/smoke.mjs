@@ -50,7 +50,13 @@ try {
     assert.equal(await intensity.innerText(), '31.2')
     await page.getByLabel('第 1 层厚度', { exact: true }).fill('0')
     await text('第 1 层厚度需在 0.1 至 2,000 毫米之间。').waitFor()
-    assert.equal(await button('保存构造').isEnabled(), false)
+    // 校验不通过时保存按钮仍可点击，由保存动作给出被拒绝的反馈并留痕。
+    assert.equal(await button('保存构造').isEnabled(), true)
+    await button('保存构造').click()
+    await page
+      .getByRole('alert')
+      .filter({ hasText: '第 1 层厚度需在 0.1 至 2,000 毫米之间。' })
+      .waitFor()
     await page.getByLabel('第 1 层厚度', { exact: true }).fill('100')
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
@@ -58,6 +64,88 @@ try {
     await page.getByLabel('当前构造', { exact: true }).selectOption({ label: '清水构造 · 编辑中' })
     assert.equal(await intensity.innerText(), '31.2')
     assert.equal(await page.getByLabel('第 1 层厚度', { exact: true }).inputValue(), '100')
+
+    // 审计日志：成功与被拒绝的尝试都要留痕，且按落库顺序编号。
+    const designKey = 'solo-0004-envelope-carbon:design:v1'
+    const readAudit = async () => {
+      const raw = await page.evaluate((key) => localStorage.getItem(key), designKey)
+      return JSON.parse(raw).audit
+    }
+    let audit = await readAudit()
+    const materialSaved = audit
+      .filter((entry) => entry.action === 'material-create' && entry.outcome === 'committed')
+      .at(-1)
+    assert.ok(materialSaved, '应记录成功保存的自定义材料。')
+    assert.equal(materialSaved.targetName, '试算保温物性')
+    assert.match(materialSaved.actor, /^[0-9a-f]{6}#[0-9a-f]{6}$/)
+    const saveRejected = audit
+      .filter((entry) => entry.action === 'assembly-save' && entry.outcome === 'rejected')
+      .at(-1)
+    assert.ok(saveRejected, '无效厚度触发的保存拒绝也应留痕。')
+    assert.match(saveRejected.reason, /厚度/)
+    const saveCommitted = audit
+      .filter((entry) => entry.action === 'assembly-create' && entry.outcome === 'committed')
+      .at(-1)
+    assert.ok(saveCommitted, '新建构造首次保存应记录为 assembly-create。')
+    assert.equal(saveCommitted.targetName, '清水构造')
+
+    // 重名材料在锁内被拒绝，仍须入档且与成功记录共享同一序号序列。
+    await button('04 材料参数').click()
+    await button('＋ 自定义材料').click()
+    await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
+    await page.getByLabel('参数来源', { exact: true }).fill('重复名称应被拒绝')
+    await button('保存材料参数').click()
+    await text('材料名称已存在，请使用可区分的名称。').waitFor()
+    audit = await readAudit()
+    const duplicateRejected = audit.find(
+      (entry) =>
+        entry.action === 'material-create' &&
+        entry.outcome === 'rejected' &&
+        /名称已存在/.test(entry.reason),
+    )
+    assert.ok(duplicateRejected, '锁内重名拒绝应留痕。')
+    audit.forEach((entry, index) => {
+      assert.equal(entry.seq, index + 1, '审计序号应从 1 起严格连续。')
+    })
+
+    // 跨标签页并发：互斥锁必须把两次提交串行化，审计不丢、不颠倒。
+    await button('01 构造编辑').click()
+    const other = await context.newPage()
+    await other.goto(`http://127.0.0.1:${address.port}`)
+    await other.locator('[data-check="intensity"]').waitFor()
+    await other.getByLabel('当前构造', { exact: true }).selectOption({ label: '清水构造 · 编辑中' })
+    const setThickness = (target, value) =>
+      target.getByLabel('第 1 层厚度', { exact: true }).fill(String(value))
+    await Promise.all([setThickness(page, 110), setThickness(other, 120)])
+    const saveOn = (target) => target.getByRole('button', { name: '保存构造', exact: true }).click()
+    const outcomeOn = (target) =>
+      Promise.race([
+        target.waitForSelector('text=构造已保存。', { timeout: 8000 }).then(() => 'committed'),
+        target
+          .waitForSelector('text=另一标签页已修改设计', { timeout: 8000 })
+          .then(() => 'rejected'),
+      ])
+    const waiters = Promise.all([outcomeOn(page), outcomeOn(other)])
+    await saveOn(page)
+    await saveOn(other)
+    const rawOutcomes = await waiters
+    const outcomes = rawOutcomes.slice().sort()
+    assert.deepEqual(outcomes, ['committed', 'rejected'], '并发保存必须恰好一成一败。')
+    await page.waitForTimeout(200)
+    audit = await readAudit()
+    const tail = audit.slice(-2)
+    assert.equal(tail[0].seq + 1, tail[1].seq, '并发两动作的审计序号必须相邻连续。')
+    assert.deepEqual(tail.map((entry) => entry.outcome).sort(), ['committed', 'rejected'])
+    assert.ok(tail.every((entry) => entry.action === 'assembly-save'))
+    assert.match(tail.find((entry) => entry.outcome === 'rejected').reason, /另一标签页/)
+    // 仅日志追加不换修订标识：失败方不应额外污染业务数据的修订次数。
+    const finalStored = JSON.parse(
+      await page.evaluate((key) => localStorage.getItem(key), designKey),
+    )
+    const qingshui = finalStored.assemblies.find((item) => item.name === '清水构造')
+    assert.ok([110, 120].includes(qingshui.layers[0].thickness), '只有一次保存能改变构造。')
+    await other.close()
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 150)))
   }
 
   if (workflow === 'compare') {
@@ -78,6 +166,16 @@ try {
     await button('将替代构造统一为基准口径').click()
     await text('替代构造已按基准统一部位、面积和年限。').waitFor()
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+
+    const rawAfterAlign = await page.evaluate(
+      (key) => localStorage.getItem(key),
+      'solo-0004-envelope-carbon:design:v1',
+    )
+    const alignEntry = JSON.parse(rawAfterAlign)
+      .audit.filter((entry) => entry.action === 'comparison-align' && entry.outcome === 'committed')
+      .at(-1)
+    assert.ok(alignEntry, '对齐比较口径成功后应留痕。')
+    assert.match(alignEntry.targetId, /\S+ → \S+/)
   }
 
   if (workflow === 'document') {
@@ -106,6 +204,29 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+
+    const rawAudit = await page.evaluate(
+      (key) => localStorage.getItem(key),
+      'solo-0004-envelope-carbon:design:v1',
+    )
+    const history = JSON.parse(rawAudit).audit
+    const finalized = history
+      .filter((entry) => entry.action === 'assembly-finalize' && entry.outcome === 'committed')
+      .at(-1)
+    const reopened = history
+      .filter((entry) => entry.action === 'assembly-reopen' && entry.outcome === 'committed')
+      .at(-1)
+    assert.ok(finalized && reopened, '定稿与重新开启编辑均应留痕。')
+    assert.ok(reopened.seq > finalized.seq, '重新编辑的序号必须晚于定稿。')
+    // 审计视图只读取数：导航存在且表格不含任何可编辑控件。
+    await button('05 审计日志').click()
+    const auditTable = page.locator('[data-check="audit-table"]')
+    await auditTable.waitFor()
+    assert.equal(await auditTable.locator('input, select, textarea, button').count(), 0)
+    assert.ok(
+      (await auditTable.innerText()).includes('生成定稿') &&
+        (await auditTable.innerText()).includes('重新开启编辑'),
+    )
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

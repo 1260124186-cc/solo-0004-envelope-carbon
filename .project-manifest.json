@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "audit",
+      "path": "src/audit",
+      "responsibility": "只追加审计日志与只读查看"
     }
   ],
   "complexity": {

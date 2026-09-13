@@ -66,7 +66,7 @@ const emit = defineEmits<{
             </button>
             <button
               class="button primary"
-              :disabled="busy || !dirty || !result"
+              :disabled="busy || !dirty"
               @click="emit('save')"
             >
               保存构造
