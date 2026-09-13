@@ -1,17 +1,19 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { ThermalBasis } from '../thermal/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
+import { validateBasis } from '../thermal/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'basis'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -32,11 +34,13 @@ export function useWorkspace() {
   )
   const editable = computed(() => draft.value?.state === 'editing')
   const findings = computed(() =>
-    draft.value ? validateAssembly(draft.value, data.value?.materials ?? []) : [],
+    draft.value
+      ? validateAssembly(draft.value, data.value?.materials ?? [], data.value?.bases ?? [])
+      : [],
   )
   const result = computed(() => {
     if (!draft.value || !data.value || findings.value.length) return null
-    return calculate(draft.value, data.value.materials)
+    return calculate(draft.value, data.value.materials, data.value.bases)
   })
   const selectedDocuments = computed(
     () =>
@@ -187,7 +191,7 @@ export function useWorkspace() {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
       if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
-      const document = createDocument(assembly, next.materials)
+      const document = createDocument(assembly, next.materials, next.bases)
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
@@ -230,6 +234,32 @@ export function useWorkspace() {
       candidate.name = candidate.name.trim()
       next.materials.push(candidate)
     }, '自定义材料已保存，可在构造中选用。')
+  }
+
+  async function addBasis(input: ThermalBasis): Promise<boolean> {
+    const candidate = clone({ ...input, id: newId('basis'), state: 'active' as const })
+    const errors = validateBasis(candidate)
+    if (errors.length) {
+      error.value = errors[0]
+      return false
+    }
+    return act((next) => {
+      if (next.bases.length >= 100) throw new Error('最多保存 100 个热工计算口径。')
+      if (next.bases.some((basis) => basis.name.trim() === candidate.name.trim())) {
+        throw new Error('口径名称已存在，请使用可区分的名称。')
+      }
+      candidate.name = candidate.name.trim()
+      next.bases.push(candidate)
+    }, '热工计算口径已保存，可在构造编辑中选用。')
+  }
+
+  async function retireBasis(id: string): Promise<boolean> {
+    return act((next) => {
+      const basis = next.bases.find((item) => item.id === id)
+      if (!basis) throw new Error('热工计算口径不存在。')
+      if (basis.state === 'retired') throw new Error('该口径已停用。')
+      basis.state = 'retired'
+    }, '口径已停用；已选用它的构造与已定稿计算书保持原结果。')
   }
 
   async function alignAlternative() {
@@ -305,6 +335,8 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
+    addBasis,
+    retireBasis,
     alignAlternative,
   }
 }

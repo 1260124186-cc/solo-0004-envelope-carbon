@@ -17,6 +17,7 @@ export interface Assembly {
   years: number
   carbonLimit: number
   thermalLimit: number
+  thermalBasisId: string | null
   note: string
   layers: Layer[]
   state: AssemblyState

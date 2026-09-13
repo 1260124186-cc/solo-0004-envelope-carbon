@@ -1,11 +1,16 @@
 import type { Assembly, Finding } from './types'
 import type { Material } from '../materials/types'
+import type { ThermalBasis } from '../thermal/types'
 
 export function inRange(value: unknown, min: number, max: number): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 }
 
-export function validateAssembly(assembly: Assembly, materials: Material[]): Finding[] {
+export function validateAssembly(
+  assembly: Assembly,
+  materials: Material[],
+  bases: ThermalBasis[] = [],
+): Finding[] {
   const findings: Finding[] = []
   const add = (path: string, text: string) => findings.push({ path, text })
   if (!assembly.name.trim() || assembly.name.length > 50) {
@@ -25,6 +30,13 @@ export function validateAssembly(assembly: Assembly, materials: Material[]): Fin
   }
   if (!inRange(assembly.thermalLimit, 0.01, 10)) {
     add('thermalLimit', '传热系数上限需在 0.01 至 10 之间。')
+  }
+  if (assembly.thermalBasisId !== null) {
+    if (typeof assembly.thermalBasisId !== 'string' || !assembly.thermalBasisId) {
+      add('thermalBasis', '热工计算口径标识无效。')
+    } else if (!bases.some((basis) => basis.id === assembly.thermalBasisId)) {
+      add('thermalBasis', '所选热工计算口径不存在，请重新选择。')
+    }
   }
   if (assembly.note.length > 1000) add('note', '设计说明最多 1,000 个字符。')
   if (!assembly.layers.length) add('layers', '请至少添加一个构造层。')

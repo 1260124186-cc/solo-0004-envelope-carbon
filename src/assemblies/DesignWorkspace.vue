@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Assembly, Layer, Finding } from './types'
 import type { Material } from '../materials/types'
+import type { ThermalBasis } from '../thermal/types'
 import type { Calculation } from '../carbon/types'
 import AssemblyFields from './AssemblyFields.vue'
 import LayerEditor from './LayerEditor.vue'
@@ -9,6 +10,7 @@ import { stateLabels } from './types'
 defineProps<{
   assembly: Assembly
   materials: Material[]
+  bases: ThermalBasis[]
   result: Calculation | null
   findings: Finding[]
   busy: boolean
@@ -39,6 +41,7 @@ const emit = defineEmits<{
       <p class="section-intro">定义构造、校核物性，在材料选择中看见减碳的可能。</p>
       <AssemblyFields
         :assembly="assembly"
+        :bases="bases"
         :disabled="busy || assembly.state === 'finalized'"
         @update="emit('update', $event)"
       />

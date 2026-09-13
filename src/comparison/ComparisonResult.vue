@@ -28,6 +28,13 @@ const rows = [
       </p>
       <p v-else>基准强度为零，不计算变化比例。</p>
     </div>
+    <p
+      v-if="!result.thermalComparable"
+      class="thermal-warning"
+      role="note"
+    >
+      两个构造采用的热工计算口径不同，传热系数按不同的表面热阻设置计算，不能直接横向比较。
+    </p>
     <div class="table-scroll">
       <table>
         <caption class="sr-only">
@@ -46,7 +53,14 @@ const rows = [
             v-for="row in rows"
             :key="row.key"
           >
-            <th scope="row">{{ row.label }}</th>
+            <th scope="row">
+              {{ row.label
+              }}<span
+                v-if="row.key === 'transmittance' && !result.thermalComparable"
+                class="row-caution"
+                >口径不同</span
+              >
+            </th>
             <td>{{ number(result.baseline[row.key]) }}</td>
             <td>{{ number(result.alternative[row.key]) }}</td>
             <td>{{ signed(result.alternative[row.key] - result.baseline[row.key]) }}</td>
@@ -102,6 +116,24 @@ const rows = [
   font-size: 11px;
   color: var(--muted);
   line-height: 1.7;
+}
+.thermal-warning {
+  color: #865629;
+  background: #fcf3de;
+  padding: 12px 16px;
+  font-size: 12px;
+  border-radius: 4px;
+  margin: 20px 0 0;
+}
+.row-caution {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 9px;
+  color: #865629;
+  background: #fcf3de;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 @media (max-width: 600px) {
   .difference-summary {

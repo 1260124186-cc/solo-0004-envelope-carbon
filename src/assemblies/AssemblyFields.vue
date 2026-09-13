@@ -1,10 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Assembly, Surface } from './types'
 import { surfaceLabels } from './types'
-defineProps<{ assembly: Assembly; disabled: boolean }>()
+import type { ThermalBasis } from '../thermal/types'
+import { defaultSurfaceResistance } from '../thermal/types'
+import { number } from '../shared/format'
+const props = defineProps<{ assembly: Assembly; bases: ThermalBasis[]; disabled: boolean }>()
 const emit = defineEmits<{ update: [patch: Partial<Assembly>] }>()
+const listed = computed(() =>
+  props.bases.filter(
+    (basis) => basis.state === 'active' || basis.id === props.assembly.thermalBasisId,
+  ),
+)
+const chosen = computed(
+  () => props.bases.find((basis) => basis.id === props.assembly.thermalBasisId) ?? null,
+)
 function numeric(event: Event): number {
   return (event.target as HTMLInputElement).valueAsNumber
+}
+function selectBasis(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  emit('update', { thermalBasisId: value || null })
 }
 </script>
 
@@ -79,6 +95,43 @@ function numeric(event: Event): number {
         @input="emit('update', { thermalLimit: numeric($event) })"
       />
     </label>
+    <div class="wide basis-field">
+      <label
+        >热工计算口径
+        <select
+          aria-label="热工计算口径"
+          :value="assembly.thermalBasisId ?? ''"
+          @change="selectBasis"
+        >
+          <option value="">
+            默认口径 · 内表面 {{ defaultSurfaceResistance.inner }} / 外表面
+            {{ defaultSurfaceResistance.outer }}
+          </option>
+          <option
+            v-for="basis in listed"
+            :key="basis.id"
+            :value="basis.id"
+          >
+            {{ basis.name }}{{ basis.state === 'retired' ? '（已停用）' : '' }}
+          </option>
+        </select>
+      </label>
+      <small
+        v-if="chosen"
+        class="basis-hint"
+      >
+        内表面 {{ number(chosen.inner) }} · 外表面 {{ number(chosen.outer) }} 平方米·开尔文/瓦 ——
+        {{ chosen.note
+        }}{{ chosen.state === 'retired' ? '（该口径已停用，可继续沿用或改选）' : '' }}
+      </small>
+      <small
+        v-else
+        class="basis-hint"
+      >
+        未选择口径时采用默认算法：内表面 {{ defaultSurfaceResistance.inner }}、外表面
+        {{ defaultSurfaceResistance.outer }} 平方米·开尔文/瓦。可在「热工口径」页新建试算口径。
+      </small>
+    </div>
     <label class="wide"
       >设计说明
       <textarea
@@ -103,6 +156,15 @@ function numeric(event: Event): number {
 }
 .wide {
   grid-column: 1 / -1;
+}
+.basis-field {
+  display: grid;
+  gap: 7px;
+}
+.basis-hint {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
 }
 @media (max-width: 740px) {
   .assembly-fields {

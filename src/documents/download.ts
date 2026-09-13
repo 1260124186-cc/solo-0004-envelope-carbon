@@ -4,6 +4,7 @@ import { surfaceLabels } from '../assemblies/types'
 
 export function documentText(document: CarbonDocument): string {
   const { assembly, result } = document
+  const surface = result.surface
   const lines = [
     '围护碳研 · 围护构造计算书',
     `构造：${assembly.name}`,
@@ -11,6 +12,8 @@ export function documentText(document: CarbonDocument): string {
     `定稿时间：${date(document.createdAt)}`,
     `构造修订：${assembly.revision}`,
     `计算方法：${result.method}`,
+    `热工计算口径：${surface.basisName ?? '默认口径'}（内表面热阻 ${number(surface.inner)}、外表面热阻 ${number(surface.outer)} 平方米·开尔文/瓦）`,
+    ...(document.thermalBasis ? [`口径依据：${document.thermalBasis.note}`] : []),
     `面积：${number(assembly.area)} 平方米`,
     `计算期：${assembly.years} 年`,
     '',
@@ -45,7 +48,7 @@ export function documentText(document: CarbonDocument): string {
     '',
     '计算范围：仅含材料初始生产与同因子替换。',
     '不含运行能耗、运输、施工能耗、终结阶段及生物源碳储存。',
-    '热阻采用简化一维算法，不含热桥、含湿与空腔修正。',
+    '热阻采用简化一维算法，按上述口径计内外表面热阻，不含热桥、含湿与空腔修正。',
     '内置物性为教学示例，实际工程应使用经核实的参数。',
   )
   return lines.join('\n')

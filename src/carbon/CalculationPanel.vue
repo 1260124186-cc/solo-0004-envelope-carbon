@@ -50,7 +50,7 @@ defineProps<{
       <div class="thermal-result">
         <div>
           <span class="eyebrow">简化传热系数</span
-          ><strong>{{ number(result.transmittance) }}</strong
+          ><strong data-check="transmittance">{{ number(result.transmittance) }}</strong
           ><small>瓦 /（平方米 · 开尔文）</small>
         </div>
         <span :class="['thermal-status', { exceeded: !result.thermalPass }]">{{
@@ -59,6 +59,11 @@ defineProps<{
       </div>
       <p class="thermal-help">
         上限 {{ number(thermalLimit) }} · 构造总厚 {{ number(result.thickness) }} 毫米
+      </p>
+      <p class="thermal-basis">
+        热工口径：{{ result.surface.basisName ?? '默认口径' }} · 内表面
+        {{ number(result.surface.inner) }} · 外表面 {{ number(result.surface.outer) }}
+        平方米·开尔文/瓦
       </p>
       <LayerContribution :layers="result.layers" />
     </template>
@@ -191,9 +196,14 @@ defineProps<{
   padding: 5px 8px;
 }
 .thermal-help {
-  margin: 12px 24px 20px;
+  margin: 12px 24px 0;
   font-size: 10px;
   color: var(--muted);
+}
+.thermal-basis {
+  margin: 6px 24px 20px;
+  font-size: 10px;
+  color: var(--green);
 }
 .invalid-calculation {
   padding: 24px;

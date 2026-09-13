@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "thermal",
+      "path": "src/thermal",
+      "responsibility": "热工计算口径与表面热阻设置管理"
     }
   ],
   "complexity": {
@@ -64,6 +69,7 @@
         "workspace",
         "assemblies",
         "carbon",
+        "thermal",
         "persistence"
       ]
     },
@@ -83,6 +89,7 @@
         "workspace",
         "assemblies",
         "carbon",
+        "thermal",
         "comparison",
         "persistence"
       ]
@@ -102,6 +109,29 @@
       "module_ids": [
         "workspace",
         "carbon",
+        "thermal",
+        "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "basis",
+      "name": "热工计算口径",
+      "entry": "页面：热工口径 / 新建口径",
+      "steps": [
+        "新建并选用口径",
+        "按口径设置计算传热系数",
+        "定稿冻结口径并停用后核对历史"
+      ],
+      "success": "结果与计算书明确显示采用的口径",
+      "failure": "口径不同的构造比较时提示传热系数不可横向比较",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "thermal",
+        "assemblies",
+        "carbon",
+        "comparison",
         "documents",
         "persistence"
       ]

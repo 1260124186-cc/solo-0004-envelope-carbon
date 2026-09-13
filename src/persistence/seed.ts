@@ -20,6 +20,7 @@ export function seedData(): EnvelopeData {
     stamp: 'initial',
     assemblies: [assembly],
     materials: clone(referenceMaterials),
+    bases: [],
     documents: [],
   }
 }

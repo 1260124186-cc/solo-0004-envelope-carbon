@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import BasisWorkspace from './thermal/BasisWorkspace.vue'
 const {
   data,
   draft,
@@ -35,6 +36,8 @@ const {
   finalize,
   reopen,
   addCustomMaterial,
+  addBasis,
+  retireBasis,
   alignAlternative,
 } = useWorkspace()
 </script>
@@ -81,6 +84,7 @@ const {
         v-if="tab === 'design'"
         :assembly="draft"
         :materials="data.materials"
+        :bases="data.bases"
         :result="result"
         :findings="findings"
         :busy="busy"
@@ -100,6 +104,7 @@ const {
         v-model:alternative-id="alternativeId"
         :assemblies="data.assemblies"
         :materials="data.materials"
+        :bases="data.bases"
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
@@ -117,10 +122,18 @@ const {
         @design="tab = 'design'"
       />
       <MaterialWorkspace
-        v-else
+        v-else-if="tab === 'materials'"
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+      />
+      <BasisWorkspace
+        v-else
+        :bases="data.bases"
+        :assemblies="data.assemblies"
+        :busy="busy"
+        :submit-basis="addBasis"
+        :retire-basis="retireBasis"
       />
     </template>
     <div

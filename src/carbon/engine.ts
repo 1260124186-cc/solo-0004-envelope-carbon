@@ -1,5 +1,7 @@
 import type { Assembly } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { ThermalBasis } from '../thermal/types'
+import { defaultSurfaceResistance } from '../thermal/types'
 import type { Calculation, LayerResult } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
@@ -10,9 +12,19 @@ export function replacementCycles(years: number, lifespan: number): number {
   return Math.max(0, Math.ceil(years / lifespan) - 1)
 }
 
-export function calculate(assembly: Assembly, materials: Material[]): Calculation {
-  const issues = validateAssembly(assembly, materials)
+export function calculate(
+  assembly: Assembly,
+  materials: Material[],
+  bases: ThermalBasis[] = [],
+): Calculation {
+  const issues = validateAssembly(assembly, materials, bases)
   if (issues.length) throw new Error(issues.map((issue) => issue.text).join('\n'))
+  const basis = bases.find((item) => item.id === assembly.thermalBasisId) ?? null
+  const surface = {
+    inner: basis?.inner ?? defaultSurfaceResistance.inner,
+    outer: basis?.outer ?? defaultSurfaceResistance.outer,
+    basisName: basis?.name ?? null,
+  }
   const byId = new Map(materials.map((material) => [material.id, material]))
   const layers: LayerResult[] = assembly.layers.map((layer) => {
     const material = byId.get(layer.materialId)
@@ -38,7 +50,7 @@ export function calculate(assembly: Assembly, materials: Material[]): Calculatio
   })
   const sum = (field: 'thickness' | 'mass' | 'initial' | 'replacement' | 'total' | 'resistance') =>
     layers.reduce((total, layer) => total + layer[field], 0)
-  const resistance = 0.11 + 0.04 + sum('resistance')
+  const resistance = surface.inner + surface.outer + sum('resistance')
   const intensity = sum('total')
   const transmittance = 1 / resistance
   return {
@@ -54,5 +66,6 @@ export function calculate(assembly: Assembly, materials: Material[]): Calculatio
     carbonPass: intensity <= assembly.carbonLimit,
     thermalPass: transmittance <= assembly.thermalLimit,
     method: calculationMethod,
+    surface,
   }
 }

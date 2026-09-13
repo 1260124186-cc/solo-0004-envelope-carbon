@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'basis'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 basis 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -107,6 +107,67 @@ try {
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
   }
+  if (workflow === 'basis') {
+    const transmittance = page.locator('[data-check="transmittance"]')
+    await transmittance.waitFor()
+    assert.equal(await transmittance.innerText(), '0.26')
+    await page.getByText('热工口径：默认口径').waitFor()
+
+    await button('05 热工口径').click()
+    await button('＋ 新建口径').click()
+    await page.getByLabel('口径名称', { exact: true }).fill('试算·高换热场景')
+    await page.getByLabel('内表面热阻（平方米·开尔文/瓦）', { exact: true }).fill('0.13')
+    await page.getByLabel('外表面热阻（平方米·开尔文/瓦）', { exact: true }).fill('0.05')
+    await page.getByLabel('依据说明', { exact: true }).fill('冒烟流程教学口径')
+    await button('保存口径').click()
+    await text('热工计算口径已保存，可在构造编辑中选用。').waitFor()
+
+    await button('01 构造编辑').click()
+    await page.getByLabel('热工计算口径', { exact: true }).selectOption({ label: '试算·高换热场景' })
+    assert.equal(await transmittance.innerText(), '0.258')
+    await page.getByText('热工口径：试算·高换热场景').waitFor()
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    await button('复制为替代方案').click()
+    await page.getByLabel('热工计算口径', { exact: true }).selectOption('')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('02 方案比较').click()
+    await text('两个构造采用的热工计算口径不同，传热系数按不同的表面热阻设置计算，不能直接横向比较。').waitFor()
+    assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '0')
+
+    await button('01 构造编辑').click()
+    await page
+      .getByLabel('当前构造', { exact: true })
+      .selectOption({ label: '庭院样房 · 岩棉外墙 · 编辑中' })
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    const frozenTransmittance = page.locator('[data-check="frozen-transmittance"]')
+    assert.equal(await frozenTransmittance.innerText(), '0.258')
+    await page.getByText('热工计算口径：试算·高换热场景').waitFor()
+    const pendingDownload = page.waitForEvent('download')
+    await button('下载计算书').click()
+    const download = await pendingDownload
+    const stream = await download.createReadStream()
+    let output = ''
+    for await (const chunk of stream) output += chunk.toString('utf8')
+    assert.ok(
+      output.includes('热工计算口径：试算·高换热场景（内表面热阻 0.13、外表面热阻 0.05 平方米·开尔文/瓦）'),
+    )
+    assert.ok(output.includes('口径依据：冒烟流程教学口径'))
+
+    await button('05 热工口径').click()
+    await button('停用口径').click()
+    await text('口径已停用；已选用它的构造与已定稿计算书保持原结果。').waitFor()
+    await button('03 计算书').click()
+    assert.equal(await frozenTransmittance.innerText(), '0.258')
+    await page.getByText('热工计算口径：试算·高换热场景').waitFor()
+    await page.reload()
+    await button('03 计算书').click()
+    assert.equal(await frozenTransmittance.innerText(), '0.258')
+  }
+
   assert.deepEqual(pageErrors, [])
   await context.close()
   console.log(`页面流程通过：${workflow}`)

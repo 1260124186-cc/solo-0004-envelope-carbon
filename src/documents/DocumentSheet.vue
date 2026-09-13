@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
-defineProps<{ document: CarbonDocument }>()
+const props = defineProps<{ document: CarbonDocument }>()
+const basisText = computed(() => {
+  const surface = props.document.result.surface
+  return `${surface.basisName ?? '默认口径'} · 内表面热阻 ${number(surface.inner)} · 外表面热阻 ${number(surface.outer)} 平方米·开尔文/瓦`
+})
 </script>
 
 <template>
@@ -23,6 +28,7 @@ defineProps<{ document: CarbonDocument }>()
       {{ document.assembly.years }} 年
     </p>
     <p class="document-meta">{{ date(document.createdAt) }} · {{ document.result.method }}</p>
+    <p class="document-meta">热工计算口径：{{ basisText }}</p>
     <div class="document-numbers">
       <div>
         <span>生命周期强度</span
@@ -34,7 +40,10 @@ defineProps<{ document: CarbonDocument }>()
         ><small>千克二氧化碳当量</small>
       </div>
       <div>
-        <span>简化传热系数</span><strong>{{ number(document.result.transmittance) }}</strong
+        <span>简化传热系数</span
+        ><strong data-check="frozen-transmittance">{{
+          number(document.result.transmittance)
+        }}</strong
         ><small>瓦 / 平方米·开尔文</small>
       </div>
     </div>
@@ -74,6 +83,7 @@ defineProps<{ document: CarbonDocument }>()
       >
         {{ material.name }}：{{ material.source }}
       </p>
+      <p v-if="document.thermalBasis">口径依据：{{ document.thermalBasis.note }}</p>
       <p>本计算书冻结生成时的输入与结果，后续构造修改不会改变本版本。</p>
     </div>
     <button

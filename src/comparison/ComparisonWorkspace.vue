@@ -2,11 +2,13 @@
 import { computed } from 'vue'
 import type { Assembly } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { ThermalBasis } from '../thermal/types'
 import { compare, comparableReasons } from './compare'
 import ComparisonResult from './ComparisonResult.vue'
 const props = defineProps<{
   assemblies: Assembly[]
   materials: Material[]
+  bases: ThermalBasis[]
   busy: boolean
   dirty: boolean
 }>()
@@ -21,7 +23,10 @@ const evaluation = computed(() => {
   const errors = comparableReasons(baseline.value, alternative.value)
   if (errors.length) return { result: null, errors }
   try {
-    return { result: compare(baseline.value, alternative.value, props.materials), errors: [] }
+    return {
+      result: compare(baseline.value, alternative.value, props.materials, props.bases),
+      errors: [],
+    }
   } catch (error) {
     return {
       result: null,

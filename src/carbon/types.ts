@@ -1,3 +1,5 @@
+import type { SurfaceSetting } from '../thermal/types'
+
 export interface LayerResult {
   layerId: string
   materialName: string
@@ -24,4 +26,5 @@ export interface Calculation {
   carbonPass: boolean
   thermalPass: boolean
   method: string
+  surface: SurfaceSetting
 }
