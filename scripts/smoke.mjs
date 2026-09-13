@@ -38,12 +38,42 @@ try {
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')
     await button('保存材料参数').click()
     await text('自定义材料已保存，可在构造中选用。').waitFor()
-    await button('01 构造编辑').click()
-    assert.equal(await button('保存构造').isEnabled(), false)
 
+    await button('⇪ 批量导入').click()
+    const batchBox = page.getByLabel('材料清单', { exact: true })
+    await batchBox.fill(
+      [
+        '名称\t类别\t密度\t导热系数\t碳因子\t参考寿命\t参数来源\t材料说明',
+        '批量玻璃棉A\t保温材料\tabc\t0.04\t1.1\t25\t冒烟批量参数\t坏行：密度非数字',
+        '批量木棉板\t保温材料\t80\t0.038\t0.9\t20\t冒烟批量参数\t',
+        '普通混凝土\t主体材料\t2400\t1.74\t0.13\t60\t冒烟批量参数\t坏行：与已有材料重名',
+      ].join('\n'),
+    )
+    await text('2 行需修正').waitFor()
+    await text('密度需要填写数字。').waitFor()
+    await text('材料目录中已有同名材料，不能覆盖，请改用可区分的名称。').waitFor()
+    assert.equal(await button('确认整批导入 1 种材料').isEnabled(), false)
+    // 原子性：整批未确认，唯一有效的行也不得提前写入材料目录。
+    await page.getByLabel('搜索材料', { exact: true }).fill('批量木棉板')
+    await text('0 种材料').waitFor()
+    await page.getByLabel('搜索材料', { exact: true }).fill('')
+    await batchBox.fill(
+      [
+        '名称\t类别\t密度\t导热系数\t碳因子\t参考寿命\t参数来源\t材料说明',
+        '批量玻璃棉A\t保温材料\t60\t0.04\t1.1\t25\t冒烟批量参数\t好行',
+        '批量木棉板\t保温材料\t80\t0.038\t0.9\t20\t冒烟批量参数\t',
+      ].join('\n'),
+    )
+    await text('2 行可导入').waitFor()
+    await button('确认整批导入 2 种材料').click()
+    await text('已整批导入 2 种自定义材料，可在构造中选用。').waitFor()
+    await button('01 构造编辑').click()
     await button('＋ 新建构造').click()
+    const layerSelect = page.getByLabel('添加构造层', { exact: true })
+    await layerSelect.selectOption({ label: '批量玻璃棉A' })
+
     await page.getByLabel('构造名称', { exact: true }).fill('清水构造')
-    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '普通混凝土' })
+    await layerSelect.selectOption({ label: '普通混凝土' })
     await button('＋ 添加这一层').click()
     await page.getByLabel('第 1 层厚度', { exact: true }).fill('100')
     await page.getByLabel('第 1 层损耗', { exact: true }).fill('0')

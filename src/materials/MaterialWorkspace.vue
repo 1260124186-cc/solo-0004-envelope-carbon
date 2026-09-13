@@ -4,14 +4,23 @@ import type { Material, MaterialKind } from './types'
 import { kindLabels } from './types'
 import MaterialCard from './MaterialCard.vue'
 import MaterialForm from './MaterialForm.vue'
+import MaterialImportPanel from './MaterialImportPanel.vue'
+import type { MaterialDraft } from './importing'
 const props = defineProps<{
   materials: Material[]
   busy: boolean
   submitMaterial: (material: Material) => Promise<boolean>
+  importMaterials: (
+    entries: {
+      draft: MaterialDraft
+      line: number
+    }[],
+  ) => Promise<{ ok: boolean; lineErrors?: { line: number; text: string }[] }>
 }>()
 const query = shallowRef('')
 const kind = shallowRef<MaterialKind | ''>('')
 const showForm = shallowRef(false)
+const showImport = shallowRef(false)
 const visible = computed(() => {
   const needle = query.value.trim().toLocaleLowerCase()
   return props.materials.filter(
@@ -20,6 +29,14 @@ const visible = computed(() => {
       (!needle || `${material.name} ${material.source}`.toLocaleLowerCase().includes(needle)),
   )
 })
+function toggleImport() {
+  showImport.value = !showImport.value
+  showForm.value = false
+}
+function toggleForm() {
+  showForm.value = !showForm.value
+  showImport.value = false
+}
 </script>
 
 <template>
@@ -29,17 +46,34 @@ const visible = computed(() => {
         <span class="eyebrow">参数依据</span>
         <h1>材料，先看物性。</h1>
       </div>
-      <button
-        class="button primary"
-        :disabled="busy"
-        @click="showForm = !showForm"
-      >
-        {{ showForm ? '收起表单' : '＋ 自定义材料' }}
-      </button>
+      <div class="actions">
+        <button
+          class="button"
+          :disabled="busy"
+          @click="toggleImport"
+        >
+          {{ showImport ? '收起导入' : '⇪ 批量导入' }}
+        </button>
+        <button
+          class="button primary"
+          :disabled="busy"
+          @click="toggleForm"
+        >
+          {{ showForm ? '收起表单' : '＋ 自定义材料' }}
+        </button>
+      </div>
     </div>
     <p class="section-intro">
       内置参数仅供教学演示。实际工程请建立带来源的材料参数，再用于构造计算。
     </p>
+    <MaterialImportPanel
+      v-if="showImport"
+      :materials="materials"
+      :busy="busy"
+      :import-materials="importMaterials"
+      @imported="showImport = false"
+      @cancel="showImport = false"
+    />
     <MaterialForm
       v-if="showForm"
       :busy="busy"

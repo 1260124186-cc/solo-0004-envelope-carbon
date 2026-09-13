@@ -5,6 +5,7 @@ import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
+import { materialCapacity, type MaterialDraft } from '../materials/importing'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
@@ -12,6 +13,16 @@ import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
 export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+
+/** 锁内复查发现某一行与最新目录冲突时携带行号，供预览按行标注。 */
+class BatchLineError extends Error {
+  constructor(
+    readonly lines: number[],
+    message: string,
+  ) {
+    super(message)
+  }
+}
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -232,6 +243,112 @@ export function useWorkspace() {
     }, '自定义材料已保存，可在构造中选用。')
   }
 
+  /**
+   * 整批导入自定义材料。entries 由导入面板的逐行预览产生，面板已做过校验；
+   * 这里不信任上游结果，写入前重新逐项校验并在存储锁内复查容量与重名。
+   * 全部检查通过后一次性写入；任何一项失败都不写入，行级冲突按原始行号返回。
+   */
+  async function importMaterials(
+    entries: { draft: MaterialDraft; line: number }[],
+  ): Promise<{ ok: boolean; lineErrors?: { line: number; text: string }[] }> {
+    if (!data.value || busy.value || fatal.value) return { ok: false }
+    const errorsByLine = new Map<number, string[]>()
+    entries.forEach(({ draft, line }) => {
+      const messages = validateMaterial({ ...draft, id: '', custom: true })
+      if (messages.length) errorsByLine.set(line, messages)
+    })
+    if (errorsByLine.size) {
+      error.value = '清单中有材料未通过物性校验，请按行修正后再确认导入。'
+      return {
+        ok: false,
+        lineErrors: Array.from(errorsByLine, ([line, texts]) => ({ line, text: texts.join('；') })),
+      }
+    }
+    if (data.value.materials.length + entries.length > materialCapacity) {
+      error.value = `材料总数不能超过 ${materialCapacity} 种，请减少清单条目。`
+      return { ok: false }
+    }
+    const seen = new Set<string>()
+    const duplicateLines = new Map<string, number[]>()
+    for (const { draft, line } of entries) {
+      const key = draft.name.trim().toLocaleLowerCase()
+      if (
+        seen.has(key) ||
+        data.value.materials.some((m) => m.name.trim().toLocaleLowerCase() === key)
+      ) {
+        duplicateLines.set(draft.name, [...(duplicateLines.get(draft.name) ?? []), line])
+      }
+      seen.add(key)
+    }
+    if (duplicateLines.size) {
+      error.value = '清单中存在与已有材料或清单内其他行重复的名称，请改名后重试。'
+      return {
+        ok: false,
+        lineErrors: Array.from(duplicateLines, ([name, lines]) => ({
+          line: lines[0],
+          text: `名称“${name}”与已有材料或清单内其他行重复。`,
+        })),
+      }
+    }
+
+    clearFeedback()
+    busy.value = true
+    try {
+      data.value = await commitData(data.value.stamp, (next) => {
+        // 锁内复查：防止预览之后其他标签页写入造成部分冲突。
+        if (next.materials.length + entries.length > materialCapacity) {
+          throw new Error(`材料总数不能超过 ${materialCapacity} 种。`)
+        }
+        const latestNames = new Map(
+          next.materials.map((material) => [
+            material.name.trim().toLocaleLowerCase(),
+            material.name,
+          ]),
+        )
+        const batchNames = new Set<string>()
+        const conflicts = new Map<string, number[]>()
+        for (const { draft, line } of entries) {
+          const key = draft.name.trim().toLocaleLowerCase()
+          if (latestNames.has(key) || batchNames.has(key)) {
+            conflicts.set(draft.name, [...(conflicts.get(draft.name) ?? []), line])
+          }
+          batchNames.add(key)
+        }
+        if (conflicts.size) {
+          throw new BatchLineError(
+            Array.from(conflicts.values()).flat(),
+            '存在重复名称，整批未写入。',
+          )
+        }
+        for (const { draft } of entries) {
+          const material: Material = { ...clone(draft), id: newId('material'), custom: true }
+          if (validateMaterial(material).length) {
+            throw new BatchLineError([], '存在未通过物性校验的条目，整批未写入。')
+          }
+          next.materials.push(material)
+        }
+      })
+      externalChange.value = false
+      notice.value = `已整批导入 ${entries.length} 种自定义材料，可在构造中选用。`
+      return { ok: true }
+    } catch (cause) {
+      if (cause instanceof BatchLineError && cause.lines.length) {
+        error.value = '清单中的名称已被其他标签页新建，请重新预览并修正后再导入。整批未写入。'
+        return {
+          ok: false,
+          lineErrors: cause.lines.map((line) => ({
+            line,
+            text: '材料名称在确认期间已被其他标签页创建。',
+          })),
+        }
+      }
+      error.value = cause instanceof Error ? cause.message : '整批导入未完成，请重试。'
+      return { ok: false }
+    } finally {
+      busy.value = false
+    }
+  }
+
   async function alignAlternative() {
     if (dirty.value) {
       error.value = '请先保存当前构造，避免口径调整覆盖编辑内容。'
@@ -305,6 +422,7 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
+    importMaterials,
     alignAlternative,
   }
 }
