@@ -7,11 +7,12 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { createPlan } from '../plans/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'plans' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -42,6 +43,13 @@ export function useWorkspace() {
     () =>
       data.value?.documents
         .filter((document) => document.assemblyId === draft.value?.id)
+        .slice()
+        .reverse() ?? [],
+  )
+  const selectedPlans = computed(
+    () =>
+      data.value?.plans
+        .filter((plan) => plan.assemblyId === draft.value?.id)
         .slice()
         .reverse() ?? [],
   )
@@ -215,6 +223,21 @@ export function useWorkspace() {
     }
   }
 
+  async function savePlan() {
+    if (!draft.value || !persisted.value || dirty.value) {
+      error.value = '请先保存当前构造，再生成材料替换计划。'
+      return
+    }
+    const id = draft.value.id
+    const saved = await act((next) => {
+      const assembly = next.assemblies.find((item) => item.id === id)
+      if (!assembly) throw new Error('构造不存在。')
+      if (next.plans.length >= 1000) throw new Error('替换计划已达到 1,000 份容量上限。')
+      next.plans.push(createPlan(assembly, next.materials))
+    }, '材料替换计划已保存，构造与物性已冻结。')
+    if (saved) tab.value = 'plans'
+  }
+
   async function addCustomMaterial(input: Material): Promise<boolean> {
     const candidate = clone({ ...input, id: newId('material'), custom: true })
     const errors = validateMaterial(candidate)
@@ -290,6 +313,7 @@ export function useWorkspace() {
     findings,
     result,
     selectedDocuments,
+    selectedPlans,
     baselineId,
     alternativeId,
     load,
@@ -304,6 +328,7 @@ export function useWorkspace() {
     save,
     finalize,
     reopen,
+    savePlan,
     addCustomMaterial,
     alignAlternative,
   }

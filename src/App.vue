@@ -6,6 +6,7 @@ import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
+import PlanWorkspace from './plans/PlanWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
   data,
@@ -20,6 +21,7 @@ const {
   findings,
   result,
   selectedDocuments,
+  selectedPlans,
   baselineId,
   alternativeId,
   load,
@@ -34,6 +36,7 @@ const {
   save,
   finalize,
   reopen,
+  savePlan,
   addCustomMaterial,
   alignAlternative,
 } = useWorkspace()
@@ -68,7 +71,7 @@ const {
         @reload="load()"
       />
       <AssemblyPicker
-        v-if="tab === 'design' || tab === 'documents'"
+        v-if="tab === 'design' || tab === 'documents' || tab === 'plans'"
         :assemblies="data.assemblies"
         :selected-id="draft.id"
         :busy="busy"
@@ -114,6 +117,16 @@ const {
         :valid="Boolean(result)"
         @finalize="finalize"
         @reopen="reopen"
+        @design="tab = 'design'"
+      />
+      <PlanWorkspace
+        v-else-if="tab === 'plans'"
+        :assembly="draft"
+        :plans="selectedPlans"
+        :dirty="dirty"
+        :busy="busy"
+        :valid="Boolean(result)"
+        @save="savePlan"
         @design="tab = 'design'"
       />
       <MaterialWorkspace

@@ -2,6 +2,7 @@ import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
+import { buildPlanYears } from '../plans/create'
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -31,16 +32,19 @@ export function decode(raw: string): EnvelopeData {
       throw new Error('存储结构不完整。')
     }
     const data = parsed as unknown as EnvelopeData
+    if (!Array.isArray(data.plans)) data.plans = []
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.plans.length > 1000
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.plans, '替换计划')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -63,6 +67,18 @@ export function decode(raw: string): EnvelopeData {
         JSON.stringify(document.result)
       ) {
         throw new Error('计算书结果与冻结输入不一致。')
+      }
+    }
+    for (const plan of data.plans) {
+      if (plan.assemblyId !== plan.assembly.id) {
+        throw new Error('替换计划与冻结构造不一致。')
+      }
+      if (!Number.isFinite(Date.parse(plan.createdAt))) throw new Error('替换计划时间无效。')
+      if (
+        JSON.stringify(calculate(plan.assembly, plan.materials)) !== JSON.stringify(plan.result) ||
+        JSON.stringify(buildPlanYears(plan.assembly, plan.materials)) !== JSON.stringify(plan.years)
+      ) {
+        throw new Error('替换计划结果与冻结输入不一致。')
       }
     }
     return data

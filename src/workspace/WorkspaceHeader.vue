@@ -6,7 +6,8 @@ const destinations: { id: WorkspaceTab; label: string; number: string }[] = [
   { id: 'design', label: '构造编辑', number: '01' },
   { id: 'compare', label: '方案比较', number: '02' },
   { id: 'documents', label: '计算书', number: '03' },
-  { id: 'materials', label: '材料参数', number: '04' },
+  { id: 'plans', label: '材料替换计划', number: '04' },
+  { id: 'materials', label: '材料参数', number: '05' },
 ]
 </script>
 

@@ -34,6 +34,11 @@
       "responsibility": "不可变计算书与下载"
     },
     {
+      "id": "plans",
+      "path": "src/plans",
+      "responsibility": "按年份排列且冻结快照的材料替换计划"
+    },
+    {
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
@@ -103,6 +108,26 @@
         "workspace",
         "carbon",
         "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "plan",
+      "name": "材料替换计划",
+      "entry": "页面：材料替换计划 / 生成并保存计划",
+      "steps": [
+        "从已保存构造按年份展开初始生产与各次替换",
+        "保存构造与材料物性快照并独立留档",
+        "编辑原构造后重新生成并核对旧计划不变",
+        "各年累计与生命周期结果对账"
+      ],
+      "success": "形成按年份排列的独立冻结记录且累计一致",
+      "failure": "未保存修改阻止生成，累计不一致拒绝保存",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "carbon",
+        "plans",
         "persistence"
       ]
     }
