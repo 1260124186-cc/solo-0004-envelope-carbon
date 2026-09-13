@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import type { Material, MaterialKind } from './types'
+import type { Evidence } from '../evidence/types'
 import { kindLabels } from './types'
 import MaterialCard from './MaterialCard.vue'
 import MaterialForm from './MaterialForm.vue'
 const props = defineProps<{
   materials: Material[]
+  evidence: Evidence[]
   busy: boolean
   submitMaterial: (material: Material) => Promise<boolean>
 }>()
+const emit = defineEmits<{ registerEvidence: [materialId: string] }>()
 const query = shallowRef('')
 const kind = shallowRef<MaterialKind | ''>('')
 const showForm = shallowRef(false)
@@ -38,7 +41,7 @@ const visible = computed(() => {
       </button>
     </div>
     <p class="section-intro">
-      内置参数仅供教学演示。实际工程请建立带来源的材料参数，再用于构造计算。
+      内置参数仅供教学演示。实际工程请建立带来源的材料参数，并在「物性依据」页登记资料出处与适用条件，再用于构造计算。登记依据不会改动这里的任何数值。
     </p>
     <MaterialForm
       v-if="showForm"
@@ -76,6 +79,8 @@ const visible = computed(() => {
         v-for="material in visible"
         :key="material.id"
         :material="material"
+        :evidence="evidence"
+        @register="emit('registerEvidence', $event)"
       />
     </div>
     <div

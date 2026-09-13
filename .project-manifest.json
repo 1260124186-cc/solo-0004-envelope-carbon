@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "evidence",
+      "path": "src/evidence",
+      "responsibility": "物性依据登记、关联与不再适用提示"
     }
   ],
   "complexity": {
@@ -103,6 +108,25 @@
         "workspace",
         "carbon",
         "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "evidence",
+      "name": "物性依据",
+      "entry": "页面：物性依据 / 登记依据",
+      "steps": [
+        "登记资料名称、年份、网址、适用范围与说明",
+        "关联一项或多项现有材料物性",
+        "切换待核实、已核实或不再适用状态"
+      ],
+      "success": "材料参数页可查看关联；不再适用依据在引用构造上明确提示",
+      "failure": "依据不完整阻止保存；任何依据操作都不改写材料数值与历史计算书",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证提示与结果不变",
+      "module_ids": [
+        "workspace",
+        "materials",
+        "evidence",
         "persistence"
       ]
     }

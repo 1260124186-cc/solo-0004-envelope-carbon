@@ -1,6 +1,7 @@
 import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
+import { validateEvidenceInput } from '../evidence/validation'
 import { calculate } from '../carbon/engine'
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -30,20 +31,38 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
+    // 物性依据为后加模块：旧版本保存的数据没有该字段，按空清单迁移。
+    if (parsed.evidence !== undefined && !Array.isArray(parsed.evidence)) {
+      throw new Error('物性依据结构不完整。')
+    }
     const data = parsed as unknown as EnvelopeData
+    if (!Array.isArray(data.evidence)) data.evidence = []
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.evidence.length > 200
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.evidence, '物性依据')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
+      }
+    }
+    for (const evidence of data.evidence) {
+      if (
+        !Number.isFinite(Date.parse(evidence.createdAt)) ||
+        !Number.isFinite(Date.parse(evidence.updatedAt))
+      ) {
+        throw new Error('物性依据时间无效。')
+      }
+      if (validateEvidenceInput(evidence, data.materials).length) {
+        throw new Error('物性依据内容无效。')
       }
     }
     for (const assembly of data.assemblies) {

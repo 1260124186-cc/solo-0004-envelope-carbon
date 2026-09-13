@@ -7,6 +7,8 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import EvidenceWorkspace from './evidence/EvidenceWorkspace.vue'
+import EvidenceWarnings from './evidence/EvidenceWarnings.vue'
 const {
   data,
   draft,
@@ -20,6 +22,10 @@ const {
   findings,
   result,
   selectedDocuments,
+  draftWarnings,
+  warningsFor,
+  evidencePreset,
+  evidencePresetNonce,
   baselineId,
   alternativeId,
   load,
@@ -36,6 +42,9 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  saveEvidence,
+  setEvidenceStatus,
+  openEvidence,
 } = useWorkspace()
 </script>
 
@@ -77,6 +86,11 @@ const {
         @create="create"
         @duplicate="duplicate"
       />
+      <EvidenceWarnings
+        v-if="tab === 'design'"
+        :warnings="draftWarnings"
+        label="本构造引用了不再适用的物性依据"
+      />
       <DesignWorkspace
         v-if="tab === 'design'"
         :assembly="draft"
@@ -94,33 +108,60 @@ const {
         @finalize="finalize"
         @reopen="reopen"
       />
-      <ComparisonWorkspace
-        v-else-if="tab === 'compare'"
-        v-model:baseline-id="baselineId"
-        v-model:alternative-id="alternativeId"
-        :assemblies="data.assemblies"
-        :materials="data.materials"
-        :busy="busy"
-        :dirty="dirty"
-        @align="alignAlternative"
-        @design="tab = 'design'"
-      />
-      <DocumentWorkspace
-        v-else-if="tab === 'documents'"
-        :assembly="draft"
-        :documents="selectedDocuments"
-        :dirty="dirty"
-        :busy="busy"
-        :valid="Boolean(result)"
-        @finalize="finalize"
-        @reopen="reopen"
-        @design="tab = 'design'"
-      />
+      <template v-else-if="tab === 'compare'">
+        <EvidenceWarnings
+          :warnings="warningsFor(baselineId)"
+          label="基准构造引用了不再适用的物性依据"
+        />
+        <EvidenceWarnings
+          :warnings="warningsFor(alternativeId)"
+          label="替代构造引用了不再适用的物性依据"
+        />
+        <ComparisonWorkspace
+          v-model:baseline-id="baselineId"
+          v-model:alternative-id="alternativeId"
+          :assemblies="data.assemblies"
+          :materials="data.materials"
+          :busy="busy"
+          :dirty="dirty"
+          @align="alignAlternative"
+          @design="tab = 'design'"
+        />
+      </template>
+      <template v-else-if="tab === 'documents'">
+        <EvidenceWarnings
+          :warnings="draftWarnings"
+          label="本构造引用了不再适用的物性依据"
+        />
+        <DocumentWorkspace
+          :assembly="draft"
+          :documents="selectedDocuments"
+          :dirty="dirty"
+          :busy="busy"
+          :valid="Boolean(result)"
+          @finalize="finalize"
+          @reopen="reopen"
+          @design="tab = 'design'"
+        />
+      </template>
       <MaterialWorkspace
-        v-else
+        v-else-if="tab === 'materials'"
         :materials="data.materials"
+        :evidence="data.evidence"
         :busy="busy"
         :submit-material="addCustomMaterial"
+        @register-evidence="openEvidence($event)"
+      />
+      <EvidenceWorkspace
+        v-else
+        :key="evidencePresetNonce"
+        :evidence="data.evidence"
+        :materials="data.materials"
+        :assemblies="data.assemblies"
+        :busy="busy"
+        :preset-material-id="evidencePreset"
+        :save-evidence="saveEvidence"
+        :set-status="setEvidenceStatus"
       />
     </template>
     <div

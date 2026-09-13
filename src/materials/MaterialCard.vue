@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import type { Material } from './types'
+import type { Evidence } from '../evidence/types'
 import { kindLabels, kindColors } from './types'
 import { number } from '../shared/format'
-defineProps<{ material: Material }>()
+import MaterialEvidence from './MaterialEvidence.vue'
+defineProps<{ material: Material; evidence: Evidence[] }>()
+const emit = defineEmits<{ register: [materialId: string] }>()
 </script>
 
 <template>
@@ -35,6 +38,11 @@ defineProps<{ material: Material }>()
       </div>
     </dl>
     <p class="material-source">{{ material.source }}</p>
+    <MaterialEvidence
+      :material="material"
+      :evidence="evidence"
+      @register="emit('register', $event)"
+    />
   </section>
 </template>
 
@@ -45,6 +53,8 @@ defineProps<{ material: Material }>()
   border-radius: 5px;
   padding: 20px;
   background: var(--paper);
+  display: flex;
+  flex-direction: column;
 }
 .card-topline {
   display: flex;

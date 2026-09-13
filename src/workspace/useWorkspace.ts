@@ -9,9 +9,12 @@ import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
+import type { Evidence, EvidenceStatus } from '../evidence/types'
+import { normalizeEvidence, validateEvidenceInput } from '../evidence/validation'
+import { obsoleteWarnings } from '../evidence/warnings'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'evidence'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -24,6 +27,9 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  // 从材料卡跳转到依据登记时携带预选材料标识；nonce 保证重复点击也会重新打开表单。
+  const evidencePreset = shallowRef('')
+  const evidencePresetNonce = shallowRef(0)
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -45,6 +51,23 @@ export function useWorkspace() {
         .slice()
         .reverse() ?? [],
   )
+  const draftWarnings = computed(() =>
+    draft.value && data.value
+      ? obsoleteWarnings(draft.value, data.value.evidence, data.value.materials)
+      : [],
+  )
+  const warningsFor = (assemblyId: string) => {
+    if (!data.value) return []
+    const assembly = data.value.assemblies.find((item) => item.id === assemblyId)
+    return assembly ? obsoleteWarnings(assembly, data.value.evidence, data.value.materials) : []
+  }
+
+  function openEvidence(materialId = '') {
+    evidencePreset.value = materialId
+    evidencePresetNonce.value += 1
+    tab.value = 'evidence'
+    clearFeedback()
+  }
 
   function clearFeedback() {
     notice.value = ''
@@ -232,6 +255,47 @@ export function useWorkspace() {
     }, '自定义材料已保存，可在构造中选用。')
   }
 
+  // 物性依据只登记文字与网址，并通过关联指认物性；任何情况下都不回写材料数值。
+  async function saveEvidence(input: Evidence): Promise<boolean> {
+    if (!data.value) return false
+    const isNew = !input.id
+    const stamp = now()
+    const candidate = normalizeEvidence(
+      isNew ? { ...input, id: newId('evidence') } : input,
+      data.value.materials,
+      { createdAt: isNew ? stamp : input.createdAt, updatedAt: stamp },
+    )
+    const errors = validateEvidenceInput(candidate, data.value.materials)
+    if (errors.length) {
+      error.value = errors[0]
+      return false
+    }
+    return act(
+      (next) => {
+        if (isNew) {
+          if (next.evidence.length >= 200) throw new Error('最多登记 200 条物性依据。')
+          next.evidence.push(candidate)
+        } else {
+          const index = next.evidence.findIndex((item) => item.id === candidate.id)
+          if (index < 0) throw new Error('该依据已不存在。')
+          // 保留原始登记时间。
+          candidate.createdAt = next.evidence[index].createdAt
+          next.evidence[index] = candidate
+        }
+      },
+      isNew ? '物性依据已登记，材料数值未被修改。' : '物性依据已更新，材料数值未被修改。',
+    )
+  }
+
+  async function setEvidenceStatus(id: string, status: EvidenceStatus): Promise<boolean> {
+    return act((next) => {
+      const evidence = next.evidence.find((item) => item.id === id)
+      if (!evidence) throw new Error('该依据已不存在。')
+      evidence.status = status
+      evidence.updatedAt = now()
+    }, '依据状态已更新。历史构造与计算书结果保持不变。')
+  }
+
   async function alignAlternative() {
     if (dirty.value) {
       error.value = '请先保存当前构造，避免口径调整覆盖编辑内容。'
@@ -290,6 +354,10 @@ export function useWorkspace() {
     findings,
     result,
     selectedDocuments,
+    draftWarnings,
+    warningsFor,
+    evidencePreset,
+    evidencePresetNonce,
     baselineId,
     alternativeId,
     load,
@@ -306,5 +374,8 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    saveEvidence,
+    setEvidenceStatus,
+    openEvidence,
   }
 }

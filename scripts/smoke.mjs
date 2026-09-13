@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'evidence'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 evidence 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -104,6 +104,63 @@ try {
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
+    await button('03 计算书').click()
+    assert.equal(await frozen.innerText(), '90.1')
+  }
+
+  if (workflow === 'evidence') {
+    // 从材料参数页查看关联，并从「岩棉板」卡片跳转登记。
+    await button('04 材料参数').click()
+    await page.getByText('物性依据（1）', { exact: true }).first().waitFor()
+    const mineralCard = page.locator('section.material-card', {
+      hasText: '岩棉板',
+    })
+    await mineralCard.getByRole('button', { name: '＋ 登记依据' }).click()
+    await page.getByLabel('资料名称', { exact: true }).fill('冒烟外部物性资料')
+    // 清空必填年份时保存应被阻止；补回年份后才允许登记。
+    await page.getByLabel('年份', { exact: true }).fill('')
+    assert.equal(await button('保存依据（不改写材料数值）').isEnabled(), false)
+    await page.getByLabel('适用材料范围', { exact: true }).fill('岩棉板干态导热与碳因子示例')
+    await page.getByLabel('年份', { exact: true }).fill('2024')
+    await button('保存依据（不改写材料数值）').click()
+    await text('物性依据已登记，材料数值未被修改。').waitFor()
+    // 材料参数页可查看新关联，材料数值保持原样。
+    await button('04 材料参数').click()
+    await page.getByText('物性依据（2）', { exact: true }).first().waitFor()
+    await page.getByText('冒烟外部物性资料').first().waitFor()
+    // 登记依据不改写数值：构造页的计算结果与教学示例一致。
+    await button('01 构造编辑').click()
+    assert.equal(await intensity.innerText(), '90.1')
+    // 到物性依据页把这条依据标为不再适用。
+    await button('05 物性依据').click()
+    const newCard = page.locator('[data-check="evidence-card-pending"]', {
+      hasText: '冒烟外部物性资料',
+    })
+    await newCard.locator('[data-check="evidence-status-select"]').selectOption('obsolete')
+    await text('依据状态已更新。历史构造与计算书结果保持不变。').waitFor()
+    // 构造编辑页出现明确提示，但即时计算结果与教学示例一致。
+    await button('01 构造编辑').click()
+    const banner = page.locator('[data-check="obsolete-warning"]')
+    await banner.waitFor()
+    assert.match(await banner.innerText(), /已标为不再适用/)
+    assert.match(await banner.innerText(), /岩棉板/)
+    assert.equal(await intensity.innerText(), '90.1')
+    // 计算书页同样提示；此时定稿生成的历史计算书结果保持原值。
+    await button('03 计算书').click()
+    await banner.first().waitFor()
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    const frozen = page.locator('[data-check="frozen-intensity"]')
+    assert.equal(await frozen.innerText(), '90.1')
+    // 改为已核实后提示消失，历史计算书仍然保留。
+    await button('05 物性依据').click()
+    await page
+      .locator('[data-check="evidence-card-obsolete"]', { hasText: '冒烟外部物性资料' })
+      .locator('[data-check="evidence-status-select"]')
+      .selectOption('verified')
+    await text('依据状态已更新。历史构造与计算书结果保持不变。').waitFor()
+    await button('01 构造编辑').click()
+    assert.equal(await page.locator('[data-check="obsolete-warning"]').count(), 0)
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
   }
