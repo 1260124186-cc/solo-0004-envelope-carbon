@@ -94,7 +94,7 @@ npm run verify
 | 冒烟 · 方案比较 compare | 14 |
 | 冒烟 · 计算书 document | 15 |
 
-GitHub 上的每次推送与 Pull Request 都由 `.github/workflows/verify.yml` 从干净环境（`npm ci` → Playwright 浏览器与系统库准备 → `npm run verify`）按同一顺序自动执行，覆盖 Node.js 20.19 与 22.12 两个版本系列。
+GitHub 上对任意分支（包括功能分支，不限于 main）的每次推送，以及每个 Pull Request，都由 `.github/workflows/verify.yml` 从干净环境（`npm ci` → Playwright 浏览器与系统库准备 → `npm run verify`）按同一顺序自动执行，覆盖 Node.js 20.19 与 22.12 两个版本系列。
 
 ### 保留的单独命令（用于定位问题）
 

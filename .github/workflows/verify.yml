@@ -3,9 +3,10 @@
 # 任一步失败都会带着该步骤的退出码（10–15）失败，CI 日志中可通过 ✓/✗ 横幅定位步骤。
 name: verify
 
+# push 不设分支过滤：main 与功能分支的每次推送都运行同一套六步验证
+# （未配置 tags，标签推送不会触发）。
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
