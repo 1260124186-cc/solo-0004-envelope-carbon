@@ -274,6 +274,11 @@ export function useWorkspace() {
   /** 从当前构造截取层组合，进入模板表单；不继承面积、名称、定稿状态或计算书。 */
   function captureTemplate() {
     if (busy.value || !draft.value || !data.value) return
+    // 模板来源仅限已持久化的构造：未保存草稿保存后刷新即丢失，不能落成模板。
+    if (dirty.value || !persisted.value) {
+      error.value = '当前构造尚未保存，请先保存构造，再把它的材料层组合存为模板。'
+      return
+    }
     if (!draft.value.layers.length) {
       error.value = '当前构造还没有材料层，无法保存为模板。'
       return

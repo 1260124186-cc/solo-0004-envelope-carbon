@@ -28,6 +28,7 @@ try {
   const button = (name) => page.getByRole('button', { name, exact: true })
   const text = (value) => page.getByText(value, { exact: true })
   const intensity = page.locator('[data-check="intensity"]')
+  const captureButton = () => button('存为构造模板')
   await intensity.waitFor()
   assert.equal(await intensity.innerText(), '90.1')
 
@@ -108,8 +109,35 @@ try {
     assert.equal(await frozen.innerText(), '90.1')
   }
   if (workflow === 'template') {
+    // 已保存的初始构造可以作为模板来源。
+    assert.equal(await captureButton().isDisabled(), false)
+
+    // 新建但未保存的构造不能存为模板：按钮禁用，不产生模板。
+    await button('＋ 新建构造').click()
+    assert.equal(await captureButton().isDisabled(), true)
+    await text('先保存构造，才能把材料层组合存为模板').waitFor()
+    await page.getByLabel('构造名称', { exact: true }).fill('待保存构造')
+    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '普通混凝土' })
+    await button('＋ 添加这一层').click()
+    assert.equal(await captureButton().isDisabled(), true)
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    assert.equal(await captureButton().isDisabled(), false)
+
+    // 已保存构造一旦再次编辑出现未保存修改，模板入口重新禁用。
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('120')
+    assert.equal(await captureButton().isDisabled(), true)
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('200')
+    assert.equal(await captureButton().isDisabled(), false)
+
+    // 回到四层的已保存初始构造，按原流程截取模板。
+    await page
+      .getByLabel('当前构造', { exact: true })
+      .selectOption({ label: '庭院样房 · 岩棉外墙 · 编辑中' })
+    assert.equal(await captureButton().isDisabled(), false)
+
     // 由当前构造截取层组合保存为模板，不携带面积、定稿状态与计算书。
-    await button('存为构造模板').click()
+    await captureButton().click()
     await page.getByLabel('模板名称', { exact: true }).fill('冒烟外墙模板')
     await page.getByLabel('使用说明', { exact: true }).fill('冒烟流程模板说明')
     await button('保存构造模板').click()

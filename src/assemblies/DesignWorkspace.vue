@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Assembly, Layer, Finding } from './types'
 import type { Material } from '../materials/types'
 import type { Calculation } from '../carbon/types'
@@ -6,7 +7,7 @@ import AssemblyFields from './AssemblyFields.vue'
 import LayerEditor from './LayerEditor.vue'
 import CalculationPanel from '../carbon/CalculationPanel.vue'
 import { stateLabels } from './types'
-defineProps<{
+const props = defineProps<{
   assembly: Assembly
   materials: Material[]
   result: Calculation | null
@@ -26,6 +27,11 @@ const emit = defineEmits<{
   finalize: []
   captureTemplate: []
 }>()
+const captureHint = computed(() =>
+  props.canCapture
+    ? '把当前材料层组合保存为可复用模板，不包含面积、定稿状态与计算书'
+    : '请先保存构造，再把已保存构造的材料层组合存为模板',
+)
 </script>
 
 <template>
@@ -62,11 +68,16 @@ const emit = defineEmits<{
             type="button"
             class="button small"
             :disabled="busy || !canCapture"
-            title="把当前材料层组合保存为可复用模板，不包含面积、定稿状态与计算书"
+            :title="captureHint"
             @click="emit('captureTemplate')"
           >
             存为构造模板
           </button>
+          <span
+            v-if="!busy && !canCapture"
+            class="capture-hint"
+            >先保存构造，才能把材料层组合存为模板</span
+          >
         </div>
         <div class="actions">
           <template v-if="assembly.state === 'editing'">
@@ -145,6 +156,10 @@ const emit = defineEmits<{
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+}
+.capture-hint {
+  font-size: 10px;
+  color: #855123;
 }
 @media (max-width: 1000px) {
   .design-grid {

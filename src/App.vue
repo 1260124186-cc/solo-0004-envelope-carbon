@@ -104,7 +104,7 @@ const {
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
-        :can-capture="draft.layers.length > 0"
+        :can-capture="!dirty && Boolean(draft.id) && draft.layers.length > 0"
         @update="update"
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
