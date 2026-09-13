@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "decisions",
+      "path": "src/decisions",
+      "responsibility": "设计决策记录与修订"
     }
   ],
   "complexity": {
@@ -102,6 +107,26 @@
       "module_ids": [
         "workspace",
         "carbon",
+        "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "decide",
+      "name": "决策记录",
+      "entry": "页面：决策记录 / 新建决策记录",
+      "steps": [
+        "引用定稿计算书的具体版本",
+        "指明采用方案并记录理由与待核实条件",
+        "保存草稿后确认结论",
+        "确认后建立新的修订"
+      ],
+      "success": "确认后记录冻结，引用版本数值不随构造变化",
+      "failure": "未指明采用方案或缺少理由时阻止确认",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "decisions",
         "documents",
         "persistence"
       ]

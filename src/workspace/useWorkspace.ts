@@ -1,21 +1,25 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { Decision } from '../decisions/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { createDecision as blankDecision, createRevision } from '../decisions/factory'
+import { confirmFindings, requireDraftDecision, validateDecision } from '../decisions/validation'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'decisions' | 'documents' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
   const draft = ref<Assembly | null>(null)
+  const decisionDraft = ref<Decision | null>(null)
   const tab = shallowRef<WorkspaceTab>('design')
   const notice = shallowRef('')
   const error = shallowRef('')
@@ -29,6 +33,15 @@ export function useWorkspace() {
   )
   const dirty = computed(() =>
     Boolean(draft.value && JSON.stringify(draft.value) !== JSON.stringify(persisted.value)),
+  )
+  const persistedDecision = computed(() =>
+    data.value?.decisions.find((item) => item.id === decisionDraft.value?.id),
+  )
+  const decisionDirty = computed(() =>
+    Boolean(
+      decisionDraft.value &&
+        JSON.stringify(decisionDraft.value) !== JSON.stringify(persistedDecision.value),
+    ),
   )
   const editable = computed(() => draft.value?.state === 'editing')
   const findings = computed(() =>
@@ -55,14 +68,22 @@ export function useWorkspace() {
     return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
   }
 
+  function mayDiscardDecision(): boolean {
+    return !decisionDirty.value || window.confirm('当前决策记录有未保存的修改，是否放弃这些修改？')
+  }
+
   function load(initial = false) {
-    if (!initial && !mayDiscard()) return
+    if (!initial && (!mayDiscard() || !mayDiscardDecision())) return
     try {
       const next = readData()
       const selectedId = draft.value?.id
+      const selectedDecisionId = decisionDraft.value?.id
       data.value = next
       draft.value = clone(
         next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null,
+      )
+      decisionDraft.value = clone(
+        next.decisions.find((item) => item.id === selectedDecisionId) ?? null,
       )
       baselineId.value = next.assemblies[0]?.id ?? ''
       alternativeId.value = next.assemblies[1]?.id ?? ''
@@ -253,6 +274,108 @@ export function useWorkspace() {
     }
   }
 
+  function selectDecision(id: string) {
+    if (busy.value || !mayDiscardDecision()) return
+    const selected = data.value?.decisions.find((item) => item.id === id)
+    if (!selected) return
+    decisionDraft.value = clone(selected)
+    clearFeedback()
+  }
+
+  function createDecision() {
+    if (busy.value || !mayDiscardDecision()) return
+    if (!data.value?.documents.length) {
+      error.value = '还没有可引用的计算书，请先为构造生成定稿。'
+      return
+    }
+    decisionDraft.value = blankDecision()
+    clearFeedback()
+  }
+
+  function updateDecision(patch: Partial<Decision>) {
+    if (!decisionDraft.value || decisionDraft.value.state !== 'draft' || busy.value) return
+    decisionDraft.value = { ...decisionDraft.value, ...patch }
+    clearFeedback()
+  }
+
+  async function saveDecision() {
+    const current = decisionDraft.value
+    if (!current || !data.value || current.state !== 'draft') return
+    const errors = validateDecision(current, data.value.documents)
+    if (errors.length) {
+      error.value = errors[0]
+      return
+    }
+    const candidate = clone(current)
+    candidate.title = candidate.title.trim()
+    candidate.updatedAt = now()
+    const saved = await act((next) => {
+      const index = next.decisions.findIndex((item) => item.id === candidate.id)
+      if (index >= 0) {
+        requireDraftDecision(next.decisions[index])
+        next.decisions[index] = candidate
+      } else {
+        if (next.decisions.length >= 200) throw new Error('最多保存 200 条决策记录。')
+        if (
+          next.decisions.some(
+            (item) => item.groupId === candidate.groupId && item.revision === candidate.revision,
+          )
+        ) {
+          throw new Error('同一决策已存在该修订号，请重新加载后再保存。')
+        }
+        next.decisions.push(candidate)
+      }
+    }, '决策草稿已保存。')
+    if (saved) decisionDraft.value = clone(candidate)
+  }
+
+  async function confirmDecision() {
+    const current = decisionDraft.value
+    if (!current || !data.value || current.state !== 'draft') return
+    if (!persistedDecision.value || decisionDirty.value) {
+      error.value = '请先保存决策草稿，再确认结论。'
+      return
+    }
+    const errors = confirmFindings(current, data.value.documents)
+    if (errors.length) {
+      error.value = errors[0]
+      return
+    }
+    const id = current.id
+    const saved = await act((next) => {
+      const decision = next.decisions.find((item) => item.id === id)
+      if (!decision) throw new Error('决策记录不存在。')
+      requireDraftDecision(decision)
+      const problems = confirmFindings(decision, next.documents)
+      if (problems.length) throw new Error(problems[0])
+      decision.state = 'confirmed'
+      decision.confirmedAt = now()
+      decision.updatedAt = now()
+    }, '决策结论已确认，如需调整请建立新的修订。')
+    if (saved) {
+      decisionDraft.value = clone(data.value!.decisions.find((item) => item.id === id)!)
+    }
+  }
+
+  async function reviseDecision() {
+    const current = decisionDraft.value
+    if (!current || !data.value || current.state !== 'confirmed' || busy.value) return
+    const group = data.value.decisions.filter((item) => item.groupId === current.groupId)
+    const candidate = createRevision(current, Math.max(...group.map((item) => item.revision)) + 1)
+    const saved = await act((next) => {
+      if (next.decisions.length >= 200) throw new Error('最多保存 200 条决策记录。')
+      if (
+        next.decisions.some(
+          (item) => item.groupId === candidate.groupId && item.revision === candidate.revision,
+        )
+      ) {
+        throw new Error('另一标签页已建立新修订，请重新加载。')
+      }
+      next.decisions.push(candidate)
+    }, '已建立新的修订，编辑后请保存并确认。')
+    if (saved) decisionDraft.value = clone(candidate)
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -263,7 +386,7 @@ export function useWorkspace() {
   }
 
   function beforeUnload(event: BeforeUnloadEvent) {
-    if (dirty.value) event.preventDefault()
+    if (dirty.value || decisionDirty.value) event.preventDefault()
   }
 
   onMounted(() => {
@@ -279,6 +402,7 @@ export function useWorkspace() {
   return {
     data,
     draft,
+    decisionDraft,
     tab,
     notice,
     error,
@@ -286,6 +410,7 @@ export function useWorkspace() {
     busy,
     externalChange,
     dirty,
+    decisionDirty,
     editable,
     findings,
     result,
@@ -306,5 +431,11 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    selectDecision,
+    createDecision,
+    updateDecision,
+    saveDecision,
+    confirmDecision,
+    reviseDecision,
   }
 }

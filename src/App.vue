@@ -5,11 +5,13 @@ import FeedbackBanner from './workspace/FeedbackBanner.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
+import DecisionWorkspace from './decisions/DecisionWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
   data,
   draft,
+  decisionDraft,
   tab,
   notice,
   error,
@@ -17,6 +19,7 @@ const {
   busy,
   externalChange,
   dirty,
+  decisionDirty,
   findings,
   result,
   selectedDocuments,
@@ -36,6 +39,12 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  selectDecision,
+  createDecision,
+  updateDecision,
+  saveDecision,
+  confirmDecision,
+  reviseDecision,
 } = useWorkspace()
 </script>
 
@@ -104,6 +113,21 @@ const {
         :dirty="dirty"
         @align="alignAlternative"
         @design="tab = 'design'"
+      />
+      <DecisionWorkspace
+        v-else-if="tab === 'decisions'"
+        :decisions="data.decisions"
+        :documents="data.documents"
+        :draft="decisionDraft"
+        :dirty="decisionDirty"
+        :busy="busy"
+        @select="selectDecision"
+        @create="createDecision"
+        @update="updateDecision"
+        @save="saveDecision"
+        @confirm="confirmDecision"
+        @revise="reviseDecision"
+        @documents="tab = 'documents'"
       />
       <DocumentWorkspace
         v-else-if="tab === 'documents'"
