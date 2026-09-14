@@ -2,7 +2,7 @@
 import type { Assembly, Surface } from './types'
 import { surfaceLabels } from './types'
 defineProps<{ assembly: Assembly; disabled: boolean }>()
-const emit = defineEmits<{ update: [patch: Partial<Assembly>] }>()
+const emit = defineEmits<{ update: [patch: Partial<Assembly>, field?: string] }>()
 function numeric(event: Event): number {
   return (event.target as HTMLInputElement).valueAsNumber
 }
@@ -19,7 +19,7 @@ function numeric(event: Event): number {
       <input
         :value="assembly.name"
         maxlength="50"
-        @input="emit('update', { name: ($event.target as HTMLInputElement).value })"
+        @input="emit('update', { name: ($event.target as HTMLInputElement).value }, 'name')"
       />
     </label>
     <label
@@ -45,7 +45,7 @@ function numeric(event: Event): number {
         max="1000000"
         step="0.1"
         :value="assembly.area"
-        @input="emit('update', { area: numeric($event) })"
+        @input="emit('update', { area: numeric($event) }, 'area')"
       />
     </label>
     <label
@@ -55,7 +55,7 @@ function numeric(event: Event): number {
         min="1"
         max="150"
         :value="assembly.years"
-        @input="emit('update', { years: numeric($event) })"
+        @input="emit('update', { years: numeric($event) }, 'years')"
       />
     </label>
     <label
@@ -65,7 +65,7 @@ function numeric(event: Event): number {
         min="1"
         max="100000"
         :value="assembly.carbonLimit"
-        @input="emit('update', { carbonLimit: numeric($event) })"
+        @input="emit('update', { carbonLimit: numeric($event) }, 'carbonLimit')"
       />
     </label>
     <label
@@ -76,7 +76,7 @@ function numeric(event: Event): number {
         max="10"
         step="0.01"
         :value="assembly.thermalLimit"
-        @input="emit('update', { thermalLimit: numeric($event) })"
+        @input="emit('update', { thermalLimit: numeric($event) }, 'thermalLimit')"
       />
     </label>
     <label class="wide"
@@ -86,7 +86,7 @@ function numeric(event: Event): number {
         maxlength="1000"
         :value="assembly.note"
         placeholder="记录构造假设、参数依据或设计意图"
-        @input="emit('update', { note: ($event.target as HTMLTextAreaElement).value })"
+        @input="emit('update', { note: ($event.target as HTMLTextAreaElement).value }, 'note')"
       ></textarea>
     </label>
   </fieldset>

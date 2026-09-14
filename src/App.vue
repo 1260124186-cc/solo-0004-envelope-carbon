@@ -17,6 +17,8 @@ const {
   busy,
   externalChange,
   dirty,
+  canUndo,
+  canRedo,
   findings,
   result,
   selectedDocuments,
@@ -31,6 +33,8 @@ const {
   updateLayer,
   removeLayer,
   move,
+  undo,
+  redo,
   save,
   finalize,
   reopen,
@@ -85,11 +89,15 @@ const {
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
+        :can-undo="canUndo"
+        :can-redo="canRedo"
         @update="update"
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
         @move-layer="move"
         @add-layer="addMaterial"
+        @undo="undo"
+        @redo="redo"
         @save="save"
         @finalize="finalize"
         @reopen="reopen"

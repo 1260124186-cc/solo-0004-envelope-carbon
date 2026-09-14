@@ -12,7 +12,7 @@ const props = defineProps<{
   disabled: boolean
 }>()
 const emit = defineEmits<{
-  update: [patch: Partial<Layer>]
+  update: [patch: Partial<Layer>, field?: string]
   remove: []
   move: [direction: -1 | 1]
 }>()
@@ -100,7 +100,7 @@ function numeric(event: Event): number {
             step="0.1"
             :aria-label="`第 ${index + 1} 层厚度`"
             :value="layer.thickness"
-            @input="emit('update', { thickness: numeric($event) })"
+            @input="emit('update', { thickness: numeric($event) }, 'thickness')"
           />
         </label>
         <label
@@ -112,7 +112,7 @@ function numeric(event: Event): number {
             step="0.1"
             :aria-label="`第 ${index + 1} 层损耗`"
             :value="layer.loss"
-            @input="emit('update', { loss: numeric($event) })"
+            @input="emit('update', { loss: numeric($event) }, 'loss')"
           />
         </label>
         <label
@@ -123,7 +123,7 @@ function numeric(event: Event): number {
             max="150"
             :aria-label="`第 ${index + 1} 层寿命`"
             :value="layer.lifespan"
-            @input="emit('update', { lifespan: numeric($event) })"
+            @input="emit('update', { lifespan: numeric($event) }, 'lifespan')"
           />
         </label>
       </div>

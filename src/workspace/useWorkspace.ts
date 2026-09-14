@@ -4,6 +4,7 @@ import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
+import { EditHistory } from '../assemblies/editHistory'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
@@ -16,6 +17,8 @@ export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
   const draft = ref<Assembly | null>(null)
+  const history = shallowRef<EditHistory | null>(null)
+  const historyTick = shallowRef(0)
   const tab = shallowRef<WorkspaceTab>('design')
   const notice = shallowRef('')
   const error = shallowRef('')
@@ -31,6 +34,14 @@ export function useWorkspace() {
     Boolean(draft.value && JSON.stringify(draft.value) !== JSON.stringify(persisted.value)),
   )
   const editable = computed(() => draft.value?.state === 'editing')
+  const canUndo = computed(
+    () =>
+      historyTick.value >= 0 && editable.value && !busy.value && Boolean(history.value?.canUndo()),
+  )
+  const canRedo = computed(
+    () =>
+      historyTick.value >= 0 && editable.value && !busy.value && Boolean(history.value?.canRedo()),
+  )
   const findings = computed(() =>
     draft.value ? validateAssembly(draft.value, data.value?.materials ?? []) : [],
   )
@@ -55,15 +66,32 @@ export function useWorkspace() {
     return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
   }
 
+  /**
+   * 接受一个构造进入当前编辑，并以它为边界建立全新的撤销历史。
+   * 历史只服务当前编辑：切换构造、新建、复制、重新加载都会清空旧历史。
+   */
+  function adopt(next: Assembly | null): void {
+    draft.value = next ? clone(next) : null
+    history.value = next ? new EditHistory(next) : null
+    historyTick.value += 1
+  }
+
+  /** 应用一次编辑：记录历史、更新草稿。非空 coalesce 用于同一输入框的连续输入合并。 */
+  function commit(next: Assembly, coalesce: string | null = null): void {
+    const before = draft.value
+    if (!before) return
+    history.value?.record(before, next, coalesce)
+    draft.value = next
+    historyTick.value += 1
+  }
+
   function load(initial = false) {
     if (!initial && !mayDiscard()) return
     try {
       const next = readData()
       const selectedId = draft.value?.id
       data.value = next
-      draft.value = clone(
-        next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null,
-      )
+      adopt(next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null)
       baselineId.value = next.assemblies[0]?.id ?? ''
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
@@ -79,14 +107,14 @@ export function useWorkspace() {
     if (busy.value || !mayDiscard()) return
     const selected = data.value?.assemblies.find((item) => item.id === id)
     if (!selected) return
-    draft.value = clone(selected)
+    adopt(selected)
     clearFeedback()
     tab.value = 'design'
   }
 
   function create() {
     if (busy.value || !mayDiscard()) return
-    draft.value = createAssembly()
+    adopt(createAssembly())
     clearFeedback()
     tab.value = 'design'
   }
@@ -97,17 +125,18 @@ export function useWorkspace() {
       error.value = '请先保存当前构造，再复制替代方案。'
       return
     }
+    const copy = duplicateAssembly(draft.value)
     baselineId.value = draft.value.id
-    draft.value = duplicateAssembly(draft.value)
-    alternativeId.value = draft.value.id
+    adopt(copy)
+    alternativeId.value = copy.id
     tab.value = 'design'
     clearFeedback()
     notice.value = '已创建替代构造草稿，修改后保存即可比较。'
   }
 
-  function update(patch: Partial<Assembly>) {
+  function update(patch: Partial<Assembly>, coalesce: string | null = null) {
     if (!draft.value || !editable.value || busy.value) return
-    draft.value = { ...draft.value, ...patch }
+    commit({ ...draft.value, ...patch }, coalesce)
     clearFeedback()
   }
 
@@ -117,24 +146,58 @@ export function useWorkspace() {
       error.value = '单个构造最多包含 20 层。'
       return
     }
-    update({ layers: [...draft.value.layers, createLayer(material)] })
+    clearFeedback()
+    commit({ ...draft.value, layers: [...draft.value.layers, createLayer(material)] })
   }
 
-  function updateLayer(id: string, patch: Partial<Layer>) {
-    if (!draft.value) return
-    update({
-      layers: draft.value.layers.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
-    })
+  function updateLayer(id: string, patch: Partial<Layer>, coalesce: string | null = null) {
+    if (!draft.value || !editable.value || busy.value) return
+    commit(
+      {
+        ...draft.value,
+        layers: draft.value.layers.map((layer) =>
+          layer.id === id ? { ...layer, ...patch } : layer,
+        ),
+      },
+      coalesce,
+    )
+    clearFeedback()
   }
 
   function removeLayer(id: string) {
-    if (!draft.value) return
-    update({ layers: draft.value.layers.filter((layer) => layer.id !== id) })
+    if (!draft.value || !editable.value || busy.value) return
+    commit({ ...draft.value, layers: draft.value.layers.filter((layer) => layer.id !== id) })
+    clearFeedback()
   }
 
   function move(id: string, direction: -1 | 1) {
-    if (!draft.value) return
-    update({ layers: moveLayer(draft.value.layers, id, direction) })
+    if (!draft.value || !editable.value || busy.value) return
+    commit({ ...draft.value, layers: moveLayer(draft.value.layers, id, direction) })
+    clearFeedback()
+  }
+
+  /**
+   * 撤销一步：回到记录的修改前快照。历史栈本身不直接改草稿，
+   * 所有派生状态（dirty、校验发现、计算结果）随草稿统一恢复，
+   * 因此不会出现界面回退而保存按钮仍判定有改动的脱节。
+   */
+  function undo() {
+    if (!draft.value || !history.value || !canUndo.value) return
+    const previous = history.value.undo(draft.value)
+    if (!previous) return
+    draft.value = previous
+    historyTick.value += 1
+    clearFeedback()
+  }
+
+  /** 重做一步；重做后若再做新修改，commit 会自动清空失效的重做记录。 */
+  function redo() {
+    if (!draft.value || !history.value || !canRedo.value) return
+    const next = history.value.redo(draft.value)
+    if (!next) return
+    draft.value = next
+    historyTick.value += 1
+    clearFeedback()
   }
 
   async function act(change: (next: EnvelopeData) => void, text: string): Promise<boolean> {
@@ -174,7 +237,11 @@ export function useWorkspace() {
         next.assemblies.push(candidate)
       }
     }, '构造已保存。')
-    if (saved) draft.value = clone(candidate)
+    if (saved) {
+      // 保存点就是历史边界：以已保存版本重建历史，撤销可回到此处，
+      // 此时无未保存修改、dirty 与计算结果都随草稿同步恢复。
+      adopt(candidate)
+    }
   }
 
   async function finalize() {
@@ -193,7 +260,7 @@ export function useWorkspace() {
       assembly.updatedAt = now()
     }, '计算书已定稿，构造现为只读。')
     if (saved) {
-      draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      adopt(data.value!.assemblies.find((item) => item.id === id)!)
       tab.value = 'documents'
     }
   }
@@ -210,7 +277,8 @@ export function useWorkspace() {
       assembly.updatedAt = now()
     }, '已重新开启编辑，历史计算书保持不变。')
     if (saved) {
-      draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      // 重新开启编辑是新的历史边界：旧编辑会话的撤销栈不带入新一轮编辑。
+      adopt(data.value!.assemblies.find((item) => item.id === id)!)
       tab.value = 'design'
     }
   }
@@ -249,7 +317,7 @@ export function useWorkspace() {
       b.updatedAt = now()
     }, '替代构造已按基准统一部位、面积和年限。')
     if (saved && draft.value) {
-      draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
+      adopt(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
     }
   }
 
@@ -266,14 +334,38 @@ export function useWorkspace() {
     if (dirty.value) event.preventDefault()
   }
 
+  function onKeydown(event: KeyboardEvent) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+    const key = event.key.toLowerCase()
+    const redoShortcut = key === 'y' || (key === 'z' && event.shiftKey)
+    if (key !== 'z' && !redoShortcut) return
+    // 焦点在可编辑控件内时让浏览器处理原生撤销/重做，避免打断同一输入框内的文本操作。
+    const target = event.target as HTMLElement | null
+    const tag = target?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+      return
+    }
+    if (redoShortcut) {
+      if (!canRedo.value) return
+      event.preventDefault()
+      redo()
+    } else {
+      if (!canUndo.value) return
+      event.preventDefault()
+      undo()
+    }
+  }
+
   onMounted(() => {
     load(true)
     window.addEventListener('storage', onStorage)
     window.addEventListener('beforeunload', beforeUnload)
+    window.addEventListener('keydown', onKeydown)
   })
   onUnmounted(() => {
     window.removeEventListener('storage', onStorage)
     window.removeEventListener('beforeunload', beforeUnload)
+    window.removeEventListener('keydown', onKeydown)
   })
 
   return {
@@ -287,6 +379,8 @@ export function useWorkspace() {
     externalChange,
     dirty,
     editable,
+    canUndo,
+    canRedo,
     findings,
     result,
     selectedDocuments,
@@ -301,6 +395,8 @@ export function useWorkspace() {
     updateLayer,
     removeLayer,
     move,
+    undo,
+    redo,
     save,
     finalize,
     reopen,

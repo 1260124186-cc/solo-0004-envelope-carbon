@@ -13,13 +13,17 @@ defineProps<{
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  canUndo: boolean
+  canRedo: boolean
 }>()
 const emit = defineEmits<{
-  update: [patch: Partial<Assembly>]
-  updateLayer: [id: string, patch: Partial<Layer>]
+  update: [patch: Partial<Assembly>, field?: string]
+  updateLayer: [id: string, patch: Partial<Layer>, field?: string]
   removeLayer: [id: string]
   moveLayer: [id: string, direction: -1 | 1]
   addLayer: [material: Material]
+  undo: []
+  redo: []
   save: []
   reopen: []
   finalize: []
@@ -40,21 +44,47 @@ const emit = defineEmits<{
       <AssemblyFields
         :assembly="assembly"
         :disabled="busy || assembly.state === 'finalized'"
-        @update="emit('update', $event)"
+        @update="(patch, field) => emit('update', patch, field)"
       />
       <LayerEditor
         :layers="assembly.layers"
         :materials="materials"
         :disabled="busy || assembly.state === 'finalized'"
-        @update="(id, patch) => emit('updateLayer', id, patch)"
+        @update="(id, patch, field) => emit('updateLayer', id, patch, field)"
         @remove="emit('removeLayer', $event)"
         @move="(id, direction) => emit('moveLayer', id, direction)"
         @add="emit('addLayer', $event)"
       />
       <div class="design-footer">
-        <span class="save-indicator">{{
-          busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
-        }}</span>
+        <div class="history-tools">
+          <span class="save-indicator">{{
+            busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
+          }}</span>
+          <div
+            class="history-buttons"
+            role="group"
+            aria-label="编辑历史"
+          >
+            <button
+              type="button"
+              class="button small"
+              :disabled="busy || assembly.state === 'finalized' || !canUndo"
+              :title="assembly.state === 'finalized' ? '已定稿构造不可撤销' : '撤销（Ctrl/⌘ + Z）'"
+              @click="emit('undo')"
+            >
+              ↶ 撤销
+            </button>
+            <button
+              type="button"
+              class="button small"
+              :disabled="busy || assembly.state === 'finalized' || !canRedo"
+              :title="assembly.state === 'finalized' ? '已定稿构造不可重做' : '重做（Ctrl/⌘ + Y）'"
+              @click="emit('redo')"
+            >
+              ↷ 重做
+            </button>
+          </div>
+        </div>
         <div class="actions">
           <template v-if="assembly.state === 'editing'">
             <button
@@ -126,6 +156,16 @@ const emit = defineEmits<{
 .save-indicator {
   font-size: 11px;
   color: var(--muted);
+}
+.history-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.history-buttons {
+  display: flex;
+  gap: 6px;
 }
 @media (max-width: 1000px) {
   .design-grid {

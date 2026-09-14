@@ -5,7 +5,7 @@ import LayerRow from './LayerRow.vue'
 import MaterialPicker from '../materials/MaterialPicker.vue'
 defineProps<{ layers: Layer[]; materials: Material[]; disabled: boolean }>()
 const emit = defineEmits<{
-  update: [id: string, patch: Partial<Layer>]
+  update: [id: string, patch: Partial<Layer>, field?: string]
   remove: [id: string]
   move: [id: string, direction: -1 | 1]
   add: [material: Material]
@@ -39,7 +39,7 @@ const emit = defineEmits<{
       :total="layers.length"
       :materials="materials"
       :disabled="disabled"
-      @update="emit('update', layer.id, $event)"
+      @update="(patch, field) => emit('update', layer.id, patch, field)"
       @remove="emit('remove', layer.id)"
       @move="emit('move', layer.id, $event)"
     />

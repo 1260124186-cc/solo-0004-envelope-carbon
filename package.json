@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0 --port 5178",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4178",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:undo": "node scripts/smoke-undo.mjs"
   },
   "dependencies": {
     "vue": "^3.5.21"
