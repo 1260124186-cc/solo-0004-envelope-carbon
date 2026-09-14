@@ -23,7 +23,10 @@ function shared(values: number[]): number | null {
 const commonLoss = computed(() => shared(props.targets.map((target) => target.layer.loss)))
 const commonLifespan = computed(() => shared(props.targets.map((target) => target.layer.lifespan)))
 watch(
-  () => props.targets.map((target) => target.layer.id).join(','),
+  () =>
+    props.targets
+      .map((target) => `${target.layer.id}:${target.layer.loss}:${target.layer.lifespan}`)
+      .join(','),
   () => {
     lossText.value = commonLoss.value === null ? '' : String(commonLoss.value)
     lifespanText.value = commonLifespan.value === null ? '' : String(commonLifespan.value)
