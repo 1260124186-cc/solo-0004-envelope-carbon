@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'snapshot'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 snapshot 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -32,7 +32,7 @@ try {
   assert.equal(await intensity.innerText(), '90.1')
 
   if (workflow === 'compose') {
-    await button('04 材料参数').click()
+    await button('05 材料参数').click()
     await button('＋ 自定义材料').click()
     await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')
@@ -101,10 +101,34 @@ try {
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     assert.notEqual(await intensity.innerText(), '90.1')
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
-    await button('03 计算书').click()
+    await button('04 计算书').click()
+    assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'snapshot') {
+    await button('03 阶段快照').click()
+    await page.getByLabel('阶段名称', { exact: true }).fill('方案比选留底')
+    await page.getByRole('checkbox', { name: /庭院样房/ }).check()
+    await button('生成阶段快照').click()
+    await text('阶段快照已生成，构造保持原有编辑状态。').waitFor()
+    const frozen = page.locator('[data-check="snapshot-intensity"]').first()
+    assert.equal(await frozen.innerText(), '90.1')
+    await text('与原构造当前版本一致。').waitFor()
+
+    await button('01 构造编辑').click()
+    assert.equal(await page.getByLabel('构造名称', { exact: true }).isEnabled(), true)
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('200')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    assert.notEqual(await intensity.innerText(), '90.1')
+
+    await button('03 阶段快照').click()
+    assert.equal(await frozen.innerText(), '90.1')
+    await text('原构造已有新变化（当前修订 2），本快照保持修订 1 时的内容。').waitFor()
+    await page.reload()
+    await button('03 阶段快照').click()
     assert.equal(await frozen.innerText(), '90.1')
   }
   assert.deepEqual(pageErrors, [])

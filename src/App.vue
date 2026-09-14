@@ -5,6 +5,7 @@ import FeedbackBanner from './workspace/FeedbackBanner.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
+import SnapshotWorkspace from './snapshots/SnapshotWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
@@ -34,6 +35,7 @@ const {
   save,
   finalize,
   reopen,
+  saveSnapshot,
   addCustomMaterial,
   alignAlternative,
 } = useWorkspace()
@@ -103,6 +105,16 @@ const {
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
+        @design="tab = 'design'"
+      />
+      <SnapshotWorkspace
+        v-else-if="tab === 'snapshots'"
+        :assemblies="data.assemblies"
+        :materials="data.materials"
+        :snapshots="data.snapshots"
+        :busy="busy"
+        :dirty="dirty"
+        :submit-snapshot="saveSnapshot"
         @design="tab = 'design'"
       />
       <DocumentWorkspace

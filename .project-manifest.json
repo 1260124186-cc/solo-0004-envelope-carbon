@@ -37,6 +37,11 @@
       "id": "materials",
       "path": "src/materials",
       "responsibility": "材料物性参数与来源校验"
+    },
+    {
+      "id": "snapshots",
+      "path": "src/snapshots",
+      "responsibility": "阶段快照整体留存与引用提示"
     }
   ],
   "complexity": {
@@ -103,6 +108,26 @@
         "workspace",
         "carbon",
         "documents",
+        "persistence"
+      ]
+    },
+    {
+      "id": "snapshot",
+      "name": "阶段快照",
+      "entry": "页面：阶段快照 / 生成阶段快照",
+      "steps": [
+        "勾选若干已保存构造并命名阶段",
+        "整体冻结构造与物性输入",
+        "重开查看并提示引用变化"
+      ],
+      "success": "快照保持生成时内容且构造状态不变",
+      "failure": "未命名或未选构造被拒绝",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "snapshots",
+        "assemblies",
+        "carbon",
         "persistence"
       ]
     }

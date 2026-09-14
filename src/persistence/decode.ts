@@ -1,4 +1,5 @@
 import type { EnvelopeData } from './types'
+import type { PhaseSnapshot } from '../snapshots/types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -30,17 +31,24 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
+    const snapshots: unknown = 'snapshots' in parsed ? parsed.snapshots : []
+    if (!Array.isArray(snapshots)) {
+      throw new Error('存储结构不完整。')
+    }
     const data = parsed as unknown as EnvelopeData
+    data.snapshots = snapshots as PhaseSnapshot[]
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.snapshots.length > 50
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.snapshots, '阶段快照')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -63,6 +71,54 @@ export function decode(raw: string): EnvelopeData {
         JSON.stringify(document.result)
       ) {
         throw new Error('计算书结果与冻结输入不一致。')
+      }
+    }
+    for (const snapshot of data.snapshots) {
+      if (typeof snapshot.name !== 'string' || !snapshot.name.trim() || snapshot.name.length > 50) {
+        throw new Error('阶段快照名称无效。')
+      }
+      if (typeof snapshot.note !== 'string' || snapshot.note.length > 500) {
+        throw new Error('阶段快照说明无效。')
+      }
+      if (!Number.isFinite(Date.parse(snapshot.createdAt))) throw new Error('阶段快照时间无效。')
+      if (
+        !Array.isArray(snapshot.entries) ||
+        !snapshot.entries.length ||
+        snapshot.entries.length > 100
+      ) {
+        throw new Error('阶段快照内容无效。')
+      }
+      const seen = new Set<string>()
+      for (const entry of snapshot.entries) {
+        if (!object(entry) || typeof entry.assemblyId !== 'string' || seen.has(entry.assemblyId)) {
+          throw new Error('阶段快照构造标识缺失或重复。')
+        }
+        seen.add(entry.assemblyId)
+        if (!object(entry.assembly) || entry.assembly.id !== entry.assemblyId) {
+          throw new Error('阶段快照与构造记录不一致。')
+        }
+        if (entry.assemblyRevision !== entry.assembly.revision) {
+          throw new Error('阶段快照修订记录不一致。')
+        }
+        if (!['editing', 'finalized'].includes(entry.assembly.state)) {
+          throw new Error('阶段快照构造状态无效。')
+        }
+        if (!Number.isInteger(entry.assembly.revision) || entry.assembly.revision < 1) {
+          throw new Error('阶段快照修订号无效。')
+        }
+        if (!Number.isFinite(Date.parse(entry.assembly.updatedAt))) {
+          throw new Error('阶段快照构造时间无效。')
+        }
+        if (!Array.isArray(entry.materials)) throw new Error('阶段快照物性记录无效。')
+        assertUnique(entry.materials, '快照材料')
+        for (const material of entry.materials) {
+          if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
+            throw new Error('阶段快照物性参数无效。')
+          }
+        }
+        if (validateAssembly(entry.assembly, entry.materials).length) {
+          throw new Error('阶段快照构造记录无效。')
+        }
       }
     }
     return data

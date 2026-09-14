@@ -7,11 +7,13 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { createSnapshot } from '../snapshots/create'
+import type { SnapshotInput } from '../snapshots/types'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'snapshots' | 'documents' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -215,6 +217,13 @@ export function useWorkspace() {
     }
   }
 
+  async function saveSnapshot(input: SnapshotInput): Promise<boolean> {
+    return act((next) => {
+      if (next.snapshots.length >= 50) throw new Error('最多保存 50 个阶段快照。')
+      next.snapshots.push(createSnapshot(next.assemblies, next.materials, input))
+    }, '阶段快照已生成，构造保持原有编辑状态。')
+  }
+
   async function addCustomMaterial(input: Material): Promise<boolean> {
     const candidate = clone({ ...input, id: newId('material'), custom: true })
     const errors = validateMaterial(candidate)
@@ -304,6 +313,7 @@ export function useWorkspace() {
     save,
     finalize,
     reopen,
+    saveSnapshot,
     addCustomMaterial,
     alignAlternative,
   }
