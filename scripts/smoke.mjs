@@ -159,9 +159,39 @@ try {
     assert.ok(movedNames.includes('岩棉板'))
     assert.ok(movedNames.includes('石灰砂浆'))
 
-    // 对照全过程不改写旧版：单版查看最早定稿仍为冻结原值。
+    // 三份定稿在下拉中的顺序（新→旧）：0=修订5（仅调序），1=修订3（层加厚），2=修订1（原始）。
+    const selectA = page.locator('.diff-selectors select').first()
+    const selectB = page.locator('.diff-selectors select').nth(1)
+    assert.equal(await selectA.locator('option').count(), 3)
+    const revisions = () => page.locator('[data-check="diff-revisions"]').innerText()
+    const intensityDelta = () => page.locator('[data-check="diff-intensity-delta"]').innerText()
+
+    // 反向选择：把“较新的修订3”放到 A、“较旧的修订1”放到 B（选择顺序与时间相反）。
+    // 方向必须仍固定显示为 旧→新（修订1 → 修订3），并出现方向已归一的提示。
+    await selectA.selectOption({ index: 1 })
+    await selectB.selectOption({ index: 2 })
+    await page.locator('[data-check="diff-reversed"]').waitFor()
+    assert.match(await revisions(), /修订 1\D+修订 3/)
+    // 第 2 层厚度 100→200 使强度上升，旧→新方向下差值必须为正。
+    const reversedDelta = await intensityDelta()
+    assert.ok(
+      !reversedDelta.startsWith('-') && reversedDelta !== '0',
+      `差值应为正，实际 ${reversedDelta}`,
+    )
+
+    // 在反向基础上再切换版本：改为 修订3(A) 对 修订5(B)，方向仍归一为旧→新（3 → 5）。
+    // 这两份只调了层顺序，故强度差值为 0；方向标记随当前选择不再反向而消失。
+    await selectB.selectOption({ index: 0 })
+    await page.locator('[data-check="diff-layer-moved"]').first().waitFor()
+    assert.match(await revisions(), /修订 3\D+修订 5/)
+    assert.equal(await intensityDelta(), '0')
+    assert.equal(await page.locator('[data-check="diff-reversed"]').count(), 0)
+
+    // 对照全过程不改写旧版、不生成新定稿：下拉始终只有三份；
+    // 切回单版查看，最早定稿（修订1）仍是冻结原值。
+    assert.equal(await selectA.locator('option').count(), 3)
     await page.locator('[data-check="mode-single"]').click()
-    await page.getByLabel('历史计算书', { exact: true }).selectOption({ index: 2 })
+    await page.locator('.document-version select').selectOption({ index: 2 })
     assert.equal(await frozen.innerText(), '90.1')
   }
   assert.deepEqual(pageErrors, [])

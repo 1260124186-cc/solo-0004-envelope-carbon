@@ -4,7 +4,7 @@ import type { Assembly } from '../assemblies/types'
 import type { CarbonDocument } from './types'
 import type { DocumentDiff } from './diff'
 import { date } from '../shared/format'
-import { diffDocuments } from './diff'
+import { diffDocuments, orderDocuments } from './diff'
 import DocumentSheet from './DocumentSheet.vue'
 import DocumentDiffView from './DocumentDiffView.vue'
 
@@ -61,16 +61,28 @@ const afterDocument = computed(() =>
 const sameSelection = computed(
   () => beforeDocument.value !== undefined && beforeId.value === afterId.value,
 )
-const diff = computed<{ value: DocumentDiff | null; error: string }>(() => {
-  if (!beforeDocument.value || !afterDocument.value) return { value: null, error: '' }
-  if (sameSelection.value) return { value: null, error: '请在两个版本框中分别选择不同的修订版。' }
+const diff = computed<{
+  value: DocumentDiff | null
+  error: string
+  reversed: boolean
+}>(() => {
+  if (!beforeDocument.value || !afterDocument.value)
+    return { value: null, error: '', reversed: false }
+  if (sameSelection.value)
+    return { value: null, error: '请在两个版本框中分别选择不同的修订版。', reversed: false }
   try {
-    // 旧版在前、新版在后；选择框顺序即时间顺序，不依赖数组当前排列。
-    return { value: diffDocuments(beforeDocument.value, afterDocument.value), error: '' }
+    // 下拉只决定“拿哪两份”；方向始终按各自冻结的生成时间归一为旧→新。
+    const ordered = orderDocuments(beforeDocument.value, afterDocument.value)
+    return {
+      value: diffDocuments(ordered.older, ordered.newer),
+      error: '',
+      reversed: ordered.reversed,
+    }
   } catch (cause) {
     return {
       value: null,
       error: cause instanceof Error ? cause.message : '无法对照这两个版本。',
+      reversed: false,
     }
   }
 })
@@ -176,9 +188,13 @@ const diff = computed<{ value: DocumentDiff | null; error: string }>(() => {
           <p class="muted">对照只读取两份计算书各自冻结的内容，不会用当前材料目录重算旧参数。</p>
         </div>
         <template v-else>
+          <p class="diff-order-note">
+            选择任意两个版本即可；下方始终按各版生成时间，固定显示为「旧版 →
+            新版」，差值方向也始终为新版减去旧版，与两个下拉的选择先后无关。
+          </p>
           <div class="diff-selectors">
             <label
-              >基准版本（旧版）
+              >版本 A
               <select v-model="beforeId">
                 <option
                   v-for="document in documents"
@@ -192,10 +208,10 @@ const diff = computed<{ value: DocumentDiff | null; error: string }>(() => {
             <span
               class="diff-arrow"
               aria-hidden="true"
-              >→</span
+              >⇄</span
             >
             <label
-              >对照版本（新版）
+              >版本 B
               <select v-model="afterId">
                 <option
                   v-for="document in documents"
@@ -214,8 +230,15 @@ const diff = computed<{ value: DocumentDiff | null; error: string }>(() => {
           >
             {{ diff.error }}
           </p>
+          <p
+            v-else-if="diff.reversed"
+            class="inline-note"
+            data-check="diff-reversed"
+          >
+            当前选择顺序为新版在前，已按生成时间自动调整为旧版到新版显示，差值方向不变。
+          </p>
           <DocumentDiffView
-            v-else-if="diff.value"
+            v-if="diff.value"
             :diff="diff.value"
           />
         </template>
@@ -252,6 +275,20 @@ const diff = computed<{ value: DocumentDiff | null; error: string }>(() => {
 }
 .diff-empty {
   margin-top: 16px;
+}
+.diff-order-note {
+  margin: 16px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.inline-note {
+  color: #2f4a5c;
+  background: #e7ecef;
+  padding: 10px 16px;
+  font-size: 12px;
+  border-radius: 4px;
+  margin: 0 0 16px;
 }
 @media (max-width: 650px) {
   .diff-selectors {

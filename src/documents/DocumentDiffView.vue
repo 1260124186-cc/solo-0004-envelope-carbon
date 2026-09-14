@@ -27,17 +27,17 @@ const badgeClass: Record<string, string> = {
     <div class="diff-heading">
       <div>
         <span class="eyebrow">两版对照</span>
-        <h2>
+        <h2 data-check="diff-revisions">
           修订 {{ props.diff.before.assembly.revision }} → 修订
           {{ props.diff.after.assembly.revision }}
         </h2>
       </div>
       <div class="diff-versions">
-        <small>基准版本（旧）</small>
-        <strong>{{ date(props.diff.before.createdAt) }}</strong>
+        <small>旧版生成时间</small>
+        <strong data-check="diff-before-date">{{ date(props.diff.before.createdAt) }}</strong>
         <span aria-hidden="true">→</span>
-        <small>对照版本（新）</small>
-        <strong>{{ date(props.diff.after.createdAt) }}</strong>
+        <small>新版生成时间</small>
+        <strong data-check="diff-after-date">{{ date(props.diff.after.createdAt) }}</strong>
       </div>
     </div>
     <p class="diff-basis">

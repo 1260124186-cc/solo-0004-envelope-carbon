@@ -185,9 +185,34 @@ function diffMatchedLayer(
   }
 }
 
+export interface OrderedDocuments {
+  older: CarbonDocument
+  newer: CarbonDocument
+  reversed: boolean
+}
+
+// 无论下拉先后怎么选，都按冻结的生成时间归一为 [旧版, 新版]。
+// createdAt 来自定稿时刻（ISO），同刻则以修订号、再以标识兜底，保证方向确定。
+export function orderDocuments(a: CarbonDocument, b: CarbonDocument): OrderedDocuments {
+  const ta = Date.parse(a.createdAt)
+  const tb = Date.parse(b.createdAt)
+  let aIsOlder: boolean
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) {
+    aIsOlder = ta < tb
+  } else if (a.assembly.revision !== b.assembly.revision) {
+    aIsOlder = a.assembly.revision < b.assembly.revision
+  } else {
+    aIsOlder = a.id < b.id
+  }
+  return {
+    older: aIsOlder ? a : b,
+    newer: aIsOlder ? b : a,
+    reversed: !aIsOlder,
+  }
+}
+
 export function diffDocuments(before: CarbonDocument, after: CarbonDocument): DocumentDiff {
   if (before.id === after.id) throw new Error('请选择两个不同的版本。')
-
   const beforeEntries = before.assembly.layers.map((layer, position) => ({
     layer,
     position,
