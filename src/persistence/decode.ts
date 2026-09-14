@@ -104,6 +104,8 @@ export function decode(raw: string): EnvelopeData {
         throw new Error('计算书与冻结构造不一致。')
       }
       if (!Number.isFinite(Date.parse(document.createdAt))) throw new Error('计算书时间无效。')
+      // 旧版本计算书冻结的是规则功能上线前的构造副本，同样补空规则标识。
+      migrateAssembly(document.assembly as unknown as Record<string, unknown>)
       const expected = calculate(document.assembly, document.materials)
       if (JSON.stringify(expected) !== JSON.stringify(document.result)) {
         throw new Error('计算书结果与冻结输入不一致。')

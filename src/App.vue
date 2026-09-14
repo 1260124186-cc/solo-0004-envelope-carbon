@@ -116,6 +116,7 @@ const {
         v-else-if="tab === 'documents'"
         :assembly="draft"
         :documents="selectedDocuments"
+        :rules="data.rules"
         :dirty="dirty"
         :busy="busy"
         :valid="Boolean(result)"

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue'
 import type { Assembly } from '../assemblies/types'
+import type { ComplianceRule } from '../compliance/types'
 import type { CarbonDocument } from './types'
 import { date } from '../shared/format'
 import DocumentSheet from './DocumentSheet.vue'
 const props = defineProps<{
   assembly: Assembly
   documents: CarbonDocument[]
+  rules: ComplianceRule[]
   dirty: boolean
   busy: boolean
   valid: boolean
@@ -86,6 +88,7 @@ const selected = computed(() =>
       <DocumentSheet
         v-if="selected"
         :document="selected"
+        :rules="rules"
       />
     </template>
   </section>

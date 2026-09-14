@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ComplianceRule } from '../compliance/types'
 import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
-import { documentCompliance } from './basis'
-const props = defineProps<{ document: CarbonDocument }>()
+import { documentCompliance, documentRuleState } from './basis'
+const props = defineProps<{ document: CarbonDocument; rules?: ComplianceRule[] }>()
 const compliance = computed(() => documentCompliance(props.document))
+// 规则现状取自当前规则表而非冻结快照：规则事后被停用/删除时，历史判定不变但要如实提示。
+const ruleState = computed(() => documentRuleState(props.document, props.rules ?? []))
 </script>
 
 <template>
@@ -33,11 +36,16 @@ const compliance = computed(() => documentCompliance(props.document))
           判定口径：{{
             compliance.mode === 'rule' ? compliance.ruleName : '构造自带目标（碳强度与传热系数）'
           }}
-          <em v-if="compliance.mode === 'rule' && !compliance.ruleActive">
-            （该规则现已停用，仍按定稿时口径显示）
-          </em>
+          <em v-if="ruleState === 'deactivated'"> （该规则现已停用，仍按定稿时口径显示） </em>
+          <em v-else-if="ruleState === 'missing'"> （该规则已被移除，仍按定稿时口径显示） </em>
         </span>
       </div>
+      <p
+        v-if="ruleState === 'deactivated' || ruleState === 'missing'"
+        class="compliance-current-note"
+      >
+        规则的后续变化不追溯改变本计算书：以下条件与结论为定稿时冻结的历史判定依据。
+      </p>
       <ul>
         <li
           v-for="condition in compliance.conditions"
@@ -107,7 +115,7 @@ const compliance = computed(() => documentCompliance(props.document))
     </div>
     <button
       class="button primary"
-      @click="downloadDocument(document)"
+      @click="downloadDocument(document, rules ?? [])"
     >
       下载计算书
     </button>
@@ -174,6 +182,12 @@ const compliance = computed(() => documentCompliance(props.document))
 }
 .compliance-title em {
   font-style: normal;
+}
+.compliance-current-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  opacity: 0.85;
 }
 .document-compliance ul {
   list-style: none;
