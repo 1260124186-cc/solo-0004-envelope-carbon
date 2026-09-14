@@ -1,4 +1,5 @@
 import type { EnvelopeData } from './types'
+import type { CarbonDocument } from '../documents/types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -56,6 +57,12 @@ export function decode(raw: string): EnvelopeData {
     for (const document of data.documents) {
       if (document.assemblyId !== document.assembly.id || document.assembly.state !== 'finalized') {
         throw new Error('计算书与冻结构造不一致。')
+      }
+      const unit: unknown = (document as Partial<CarbonDocument>).thicknessUnit
+      if (unit === undefined) {
+        document.thicknessUnit = 'mm'
+      } else if (unit !== 'mm' && unit !== 'm') {
+        throw new Error('计算书厚度单位无效。')
       }
       if (!Number.isFinite(Date.parse(document.createdAt))) throw new Error('计算书时间无效。')
       if (

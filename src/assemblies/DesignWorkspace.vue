@@ -2,6 +2,7 @@
 import type { Assembly, Layer, Finding } from './types'
 import type { Material } from '../materials/types'
 import type { Calculation } from '../carbon/types'
+import type { ThicknessUnit } from '../shared/thickness'
 import AssemblyFields from './AssemblyFields.vue'
 import LayerEditor from './LayerEditor.vue'
 import CalculationPanel from '../carbon/CalculationPanel.vue'
@@ -13,6 +14,7 @@ defineProps<{
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  thicknessUnit: ThicknessUnit
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   save: []
   reopen: []
   finalize: []
+  'update:thicknessUnit': [unit: ThicknessUnit]
 }>()
 </script>
 
@@ -46,10 +49,12 @@ const emit = defineEmits<{
         :layers="assembly.layers"
         :materials="materials"
         :disabled="busy || assembly.state === 'finalized'"
+        :unit="thicknessUnit"
         @update="(id, patch) => emit('updateLayer', id, patch)"
         @remove="emit('removeLayer', $event)"
         @move="(id, direction) => emit('moveLayer', id, direction)"
         @add="emit('addLayer', $event)"
+        @update:unit="emit('update:thicknessUnit', $event)"
       />
       <div class="design-footer">
         <span class="save-indicator">{{
@@ -90,6 +95,7 @@ const emit = defineEmits<{
       :years="assembly.years"
       :carbon-limit="assembly.carbonLimit"
       :thermal-limit="assembly.thermalLimit"
+      :unit="thicknessUnit"
     />
   </div>
 </template>

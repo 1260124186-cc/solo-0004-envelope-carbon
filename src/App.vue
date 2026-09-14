@@ -22,6 +22,7 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  thicknessUnit,
   load,
   select,
   create,
@@ -79,6 +80,7 @@ const {
       />
       <DesignWorkspace
         v-if="tab === 'design'"
+        v-model:thickness-unit="thicknessUnit"
         :assembly="draft"
         :materials="data.materials"
         :result="result"

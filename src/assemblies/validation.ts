@@ -1,11 +1,18 @@
 import type { Assembly, Finding } from './types'
 import type { Material } from '../materials/types'
+import type { ThicknessUnit } from '../shared/thickness'
+import { thicknessBounds, thicknessUnitLabels } from '../shared/thickness'
+import { number } from '../shared/format'
 
 export function inRange(value: unknown, min: number, max: number): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 }
 
-export function validateAssembly(assembly: Assembly, materials: Material[]): Finding[] {
+export function validateAssembly(
+  assembly: Assembly,
+  materials: Material[],
+  unit: ThicknessUnit = 'mm',
+): Finding[] {
   const findings: Finding[] = []
   const add = (path: string, text: string) => findings.push({ path, text })
   if (!assembly.name.trim() || assembly.name.length > 50) {
@@ -38,8 +45,12 @@ export function validateAssembly(assembly: Assembly, materials: Material[]): Fin
     if (!materials.some((material) => material.id === layer.materialId)) {
       add(path, `${prefix}引用的材料不存在。`)
     }
-    if (!inRange(layer.thickness, 0.1, 2000)) {
-      add(path, `${prefix}厚度需在 0.1 至 2,000 毫米之间。`)
+    if (!inRange(layer.thickness, thicknessBounds.mm.min, thicknessBounds.mm.max)) {
+      const bounds = thicknessBounds[unit]
+      add(
+        path,
+        `${prefix}厚度需在 ${number(bounds.min)} 至 ${number(bounds.max)} ${thicknessUnitLabels[unit]}之间。`,
+      )
     }
     if (!inRange(layer.loss, 0, 50)) {
       add(path, `${prefix}损耗率需在 0 至 50% 之间。`)

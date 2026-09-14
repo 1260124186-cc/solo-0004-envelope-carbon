@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Calculation } from './types'
 import type { Finding } from '../assemblies/types'
+import type { ThicknessUnit } from '../shared/thickness'
+import { thicknessUnitLabels, toUnit } from '../shared/thickness'
 import { number } from '../shared/format'
 import LayerContribution from './LayerContribution.vue'
 import MethodNote from './MethodNote.vue'
@@ -11,6 +13,7 @@ defineProps<{
   years: number
   carbonLimit: number
   thermalLimit: number
+  unit: ThicknessUnit
 }>()
 </script>
 
@@ -58,7 +61,8 @@ defineProps<{
         }}</span>
       </div>
       <p class="thermal-help">
-        上限 {{ number(thermalLimit) }} · 构造总厚 {{ number(result.thickness) }} 毫米
+        上限 {{ number(thermalLimit) }} · 构造总厚 {{ number(toUnit(result.thickness, unit)) }}
+        {{ thicknessUnitLabels[unit] }}
       </p>
       <LayerContribution :layers="result.layers" />
     </template>

@@ -1,9 +1,11 @@
 import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
+import { thicknessUnitLabels, toUnit } from '../shared/thickness'
 import { surfaceLabels } from '../assemblies/types'
 
 export function documentText(document: CarbonDocument): string {
   const { assembly, result } = document
+  const unit = thicknessUnitLabels[document.thicknessUnit]
   const lines = [
     '围护碳研 · 围护构造计算书',
     `构造：${assembly.name}`,
@@ -13,6 +15,7 @@ export function documentText(document: CarbonDocument): string {
     `计算方法：${result.method}`,
     `面积：${number(assembly.area)} 平方米`,
     `计算期：${assembly.years} 年`,
+    `厚度单位：${unit}`,
     '',
     '一、计算结果',
     `初始隐含碳：${number(result.initial)} 千克二氧化碳当量/平方米`,
@@ -25,7 +28,7 @@ export function documentText(document: CarbonDocument): string {
   ]
   result.layers.forEach((layer, index) => {
     lines.push(
-      `${index + 1}. ${layer.materialName}，厚 ${number(layer.thickness)} 毫米`,
+      `${index + 1}. ${layer.materialName}，厚 ${number(toUnit(layer.thickness, document.thicknessUnit))} ${unit}`,
       `质量 ${number(layer.mass)} 千克/平方米；替换 ${layer.cycles} 次`,
       `隐含碳 ${number(layer.total)} 千克二氧化碳当量/平方米`,
       `参数来源：${layer.source}`,

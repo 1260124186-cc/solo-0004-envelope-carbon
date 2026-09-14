@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
+import { thicknessUnitLabels, toUnit } from '../shared/thickness'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
 defineProps<{ document: CarbonDocument }>()
@@ -20,7 +21,7 @@ defineProps<{ document: CarbonDocument }>()
     </div>
     <p class="document-meta">
       {{ surfaceLabels[document.assembly.surface] }} · {{ number(document.assembly.area) }} 平方米 ·
-      {{ document.assembly.years }} 年
+      {{ document.assembly.years }} 年 · 厚度单位：{{ thicknessUnitLabels[document.thicknessUnit] }}
     </p>
     <p class="document-meta">{{ date(document.createdAt) }} · {{ document.result.method }}</p>
     <div class="document-numbers">
@@ -46,7 +47,7 @@ defineProps<{ document: CarbonDocument }>()
         <thead>
           <tr>
             <th scope="col">材料</th>
-            <th scope="col">厚度（毫米）</th>
+            <th scope="col">厚度（{{ thicknessUnitLabels[document.thicknessUnit] }}）</th>
             <th scope="col">替换次数</th>
             <th scope="col">隐含碳（千克当量/平方米）</th>
           </tr>
@@ -57,7 +58,7 @@ defineProps<{ document: CarbonDocument }>()
             :key="layer.layerId"
           >
             <th scope="row">{{ layer.materialName }}</th>
-            <td>{{ number(layer.thickness) }}</td>
+            <td>{{ number(toUnit(layer.thickness, document.thicknessUnit)) }}</td>
             <td>{{ layer.cycles }}</td>
             <td>{{ number(layer.total) }}</td>
           </tr>

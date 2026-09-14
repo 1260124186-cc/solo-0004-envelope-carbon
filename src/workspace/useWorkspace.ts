@@ -2,6 +2,7 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
+import type { ThicknessUnit } from '../shared/thickness'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
@@ -24,6 +25,8 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  // 厚度单位只影响输入与展示口径，不写入构造数据，也不随构造保存。
+  const thicknessUnit = shallowRef<ThicknessUnit>('mm')
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -32,7 +35,9 @@ export function useWorkspace() {
   )
   const editable = computed(() => draft.value?.state === 'editing')
   const findings = computed(() =>
-    draft.value ? validateAssembly(draft.value, data.value?.materials ?? []) : [],
+    draft.value
+      ? validateAssembly(draft.value, data.value?.materials ?? [], thicknessUnit.value)
+      : [],
   )
   const result = computed(() => {
     if (!draft.value || !data.value || findings.value.length) return null
@@ -187,7 +192,7 @@ export function useWorkspace() {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
       if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
-      const document = createDocument(assembly, next.materials)
+      const document = createDocument(assembly, next.materials, thicknessUnit.value)
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
@@ -292,6 +297,7 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    thicknessUnit,
     load,
     select,
     create,

@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import type { Layer } from './types'
 import type { Material } from '../materials/types'
+import type { ThicknessUnit } from '../shared/thickness'
+import { fromUnit, thicknessBounds, thicknessUnitLabels, toUnit } from '../shared/thickness'
 import { kindColors, kindLabels } from '../materials/types'
 import { number } from '../shared/format'
 const props = defineProps<{
@@ -10,6 +12,7 @@ const props = defineProps<{
   total: number
   materials: Material[]
   disabled: boolean
+  unit: ThicknessUnit
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Layer>]
@@ -17,6 +20,7 @@ const emit = defineEmits<{
   move: [direction: -1 | 1]
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
+const bounds = computed(() => thicknessBounds[props.unit])
 function changeMaterial(event: Event) {
   const selected = props.materials.find(
     (item) => item.id === (event.target as HTMLSelectElement).value,
@@ -92,15 +96,15 @@ function numeric(event: Event): number {
       </div>
       <div class="layer-inputs">
         <label
-          >厚度（毫米）
+          >厚度（{{ thicknessUnitLabels[unit] }}）
           <input
             type="number"
-            min="0.1"
-            max="2000"
-            step="0.1"
+            :min="bounds.min"
+            :max="bounds.max"
+            :step="bounds.step"
             :aria-label="`第 ${index + 1} 层厚度`"
-            :value="layer.thickness"
-            @input="emit('update', { thickness: numeric($event) })"
+            :value="toUnit(layer.thickness, unit)"
+            @input="emit('update', { thickness: fromUnit(numeric($event), unit) })"
           />
         </label>
         <label
