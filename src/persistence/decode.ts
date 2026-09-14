@@ -30,17 +30,24 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
+    // 比较记录为后增字段：兼容没有该字段的已保存设计，按空集合处理。
+    if (parsed.comparisons !== undefined && !Array.isArray(parsed.comparisons)) {
+      throw new Error('存储结构不完整。')
+    }
     const data = parsed as unknown as EnvelopeData
+    data.comparisons ??= []
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.comparisons.length > 1000
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.comparisons, '比较记录')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -63,6 +70,50 @@ export function decode(raw: string): EnvelopeData {
         JSON.stringify(document.result)
       ) {
         throw new Error('计算书结果与冻结输入不一致。')
+      }
+    }
+    for (const comparison of data.comparisons) {
+      if (
+        typeof comparison.id !== 'string' ||
+        !comparison.id ||
+        typeof comparison.createdAt !== 'string' ||
+        !comparison.baseline ||
+        !comparison.alternative
+      ) {
+        throw new Error('比较记录结构不完整。')
+      }
+      if (!Number.isFinite(Date.parse(comparison.createdAt))) throw new Error('比较记录时间无效。')
+      for (const side of [comparison.baseline, comparison.alternative]) {
+        if (validateAssembly(side.assembly, side.materials).length) {
+          throw new Error('比较记录的冻结构造无效。')
+        }
+        if (
+          JSON.stringify(calculate(side.assembly, side.materials)) !== JSON.stringify(side.result)
+        ) {
+          throw new Error('比较记录结果与冻结输入不一致。')
+        }
+      }
+      const a = comparison.baseline
+      const b = comparison.alternative
+      if (a.assembly.id === b.assembly.id) throw new Error('比较记录的两个构造相同。')
+      if (
+        a.assembly.surface !== b.assembly.surface ||
+        a.assembly.area !== b.assembly.area ||
+        a.assembly.years !== b.assembly.years
+      ) {
+        throw new Error('比较记录的比较口径不一致。')
+      }
+      const expectedPercent =
+        a.result.intensity === 0
+          ? null
+          : ((b.result.intensity - a.result.intensity) / a.result.intensity) * 100
+      if (
+        comparison.carbonDelta !== b.result.intensity - a.result.intensity ||
+        comparison.wholeDelta !== b.result.whole - a.result.whole ||
+        comparison.thermalDelta !== b.result.transmittance - a.result.transmittance ||
+        comparison.percent !== expectedPercent
+      ) {
+        throw new Error('比较记录差值与冻结结果不一致。')
       }
     }
     return data

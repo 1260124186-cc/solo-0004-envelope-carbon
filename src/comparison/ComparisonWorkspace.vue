@@ -2,17 +2,25 @@
 import { computed } from 'vue'
 import type { Assembly } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { ComparisonRecord } from './types'
 import { compare, comparableReasons } from './compare'
 import ComparisonResult from './ComparisonResult.vue'
+import ComparisonArchive from './ComparisonArchive.vue'
 const props = defineProps<{
   assemblies: Assembly[]
   materials: Material[]
+  comparisons: ComparisonRecord[]
   busy: boolean
   dirty: boolean
 }>()
 const baselineId = defineModel<string>('baselineId', { required: true })
 const alternativeId = defineModel<string>('alternativeId', { required: true })
-const emit = defineEmits<{ align: []; design: [] }>()
+const emit = defineEmits<{
+  align: []
+  design: []
+  saveComparison: []
+  exportReport: [id: string]
+}>()
 const baseline = computed(() => props.assemblies.find((item) => item.id === baselineId.value))
 const alternative = computed(() => props.assemblies.find((item) => item.id === alternativeId.value))
 const evaluation = computed(() => {
@@ -138,6 +146,13 @@ const canAlign = computed(
         :result="evaluation.result"
         :baseline-name="baseline.name"
         :alternative-name="alternative.name"
+      />
+      <ComparisonArchive
+        :comparisons="comparisons"
+        :busy="busy"
+        :can-save="Boolean(evaluation.result) && !dirty"
+        @save="emit('saveComparison')"
+        @export="emit('exportReport', $event)"
       />
     </template>
   </section>

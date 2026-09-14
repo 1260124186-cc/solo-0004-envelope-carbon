@@ -7,6 +7,8 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { saveComparison } from '../comparison/record'
+import { downloadComparisonReport } from '../comparison/report'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
@@ -44,6 +46,9 @@ export function useWorkspace() {
         .filter((document) => document.assemblyId === draft.value?.id)
         .slice()
         .reverse() ?? [],
+  )
+  const savedComparisons = computed(() =>
+    data.value ? data.value.comparisons.slice().reverse() : [],
   )
 
   function clearFeedback() {
@@ -253,6 +258,38 @@ export function useWorkspace() {
     }
   }
 
+  async function saveCurrentComparison() {
+    if (!data.value || busy.value || fatal.value) return false
+    if (dirty.value) {
+      error.value = '编辑区仍有未保存修改，请先保存构造，比较记录只能冻结已保存版本。'
+      return false
+    }
+    const aId = baselineId.value
+    const bId = alternativeId.value
+    const success = await act((next) => {
+      const baseline = next.assemblies.find((item) => item.id === aId)
+      const alternative = next.assemblies.find((item) => item.id === bId)
+      if (!baseline || !alternative) throw new Error('请选择基准构造和替代构造。')
+      if (next.comparisons.length >= 1000) throw new Error('比较记录已达到 1,000 条容量上限。')
+      next.comparisons.push(saveComparison(baseline, alternative, next.materials))
+    }, '比较结果已保存，可随时导出对比报告。')
+    return success
+  }
+
+  function exportComparison(recordId: string) {
+    const record = data.value?.comparisons.find((item) => item.id === recordId)
+    if (!record) {
+      error.value = '该比较结果已不存在，请重新选择。'
+      return
+    }
+    try {
+      downloadComparisonReport(record)
+      notice.value = '对比报告已下载，报告内容取自保存时冻结的数据。'
+    } catch {
+      error.value = '报告生成失败，请重试。'
+    }
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -290,6 +327,7 @@ export function useWorkspace() {
     findings,
     result,
     selectedDocuments,
+    savedComparisons,
     baselineId,
     alternativeId,
     load,
@@ -306,5 +344,7 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    saveCurrentComparison,
+    exportComparison,
   }
 }

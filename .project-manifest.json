@@ -26,7 +26,7 @@
     {
       "id": "comparison",
       "path": "src/comparison",
-      "responsibility": "替代方案同口径比较"
+      "responsibility": "替代方案同口径比较、比较记录冻结与对比报告导出"
     },
     {
       "id": "documents",
@@ -74,9 +74,10 @@
       "steps": [
         "复制基准构造",
         "修改材料与厚度",
-        "按相同面积寿命比较结果"
+        "按相同面积寿命比较结果",
+        "保存冻结的比较记录并导出中文对比报告"
       ],
-      "success": "呈现可追溯的差值",
+      "success": "呈现可追溯的差值与可下载的冻结报告",
       "failure": "不同口径阻止比较",
       "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
       "module_ids": [

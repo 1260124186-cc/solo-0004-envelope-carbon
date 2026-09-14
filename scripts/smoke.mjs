@@ -69,6 +69,30 @@ try {
     await button('02 方案比较').click()
     await page.locator('[data-check="carbon-delta"]').waitFor()
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+    await button('保存当前比较结果').click()
+    await text('比较结果已保存，可随时导出对比报告。').waitFor()
+    const savedDelta = page.locator('[data-check="saved-carbon-delta"]')
+    await savedDelta.waitFor()
+    assert.equal(await savedDelta.innerText(), '-11.54')
+    const pendingReport = page.waitForEvent('download')
+    await button('下载中文对比报告').click()
+    const report = await pendingReport
+    assert.match(report.suggestedFilename(), /对比报告.*\.txt$/)
+    let reportText = ''
+    for await (const chunk of await report.createReadStream()) reportText += chunk.toString('utf8')
+    for (const piece of [
+      '构造对比报告',
+      '相同的构造面积：100 平方米',
+      '相同的计算年限：60 年',
+      '本报告中的每一项差值均按“替代构造减去基准构造”',
+      '生命周期碳强度差值：-11.54',
+      '岩棉板',
+      '木纤维保温板',
+      '不取自当前正在编辑的草稿',
+      '不访问在线服务',
+    ]) {
+      assert.ok(reportText.includes(piece), `对比报告缺少：${piece}`)
+    }
     await button('01 构造编辑').click()
     await page.getByLabel('构造面积（平方米）', { exact: true }).fill('200')
     await button('保存构造').click()
@@ -78,6 +102,8 @@ try {
     await button('将替代构造统一为基准口径').click()
     await text('替代构造已按基准统一部位、面积和年限。').waitFor()
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+    // 口径调整后，已保存的比较记录仍为保存时冻结的内容，可重新导出。
+    assert.equal(await page.locator('[data-check="saved-carbon-delta"]').innerText(), '-11.54')
   }
 
   if (workflow === 'document') {

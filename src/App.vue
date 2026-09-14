@@ -20,6 +20,7 @@ const {
   findings,
   result,
   selectedDocuments,
+  savedComparisons,
   baselineId,
   alternativeId,
   load,
@@ -36,6 +37,8 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  saveCurrentComparison,
+  exportComparison,
 } = useWorkspace()
 </script>
 
@@ -100,10 +103,13 @@ const {
         v-model:alternative-id="alternativeId"
         :assemblies="data.assemblies"
         :materials="data.materials"
+        :comparisons="savedComparisons"
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
         @design="tab = 'design'"
+        @save-comparison="saveCurrentComparison"
+        @export-report="exportComparison"
       />
       <DocumentWorkspace
         v-else-if="tab === 'documents'"
