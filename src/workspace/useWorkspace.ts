@@ -11,7 +11,7 @@ import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'lineage' | 'documents' | 'materials'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -102,7 +102,7 @@ export function useWorkspace() {
     alternativeId.value = draft.value.id
     tab.value = 'design'
     clearFeedback()
-    notice.value = '已创建替代构造草稿，修改后保存即可比较。'
+    notice.value = '已创建替代构造草稿并记录来源，修改后保存即可比较。'
   }
 
   function update(patch: Partial<Assembly>) {

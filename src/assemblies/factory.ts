@@ -23,6 +23,7 @@ export function createAssembly(name = '未命名构造'): Assembly {
     thermalLimit: 0.6,
     note: '',
     layers: [],
+    origin: null,
     state: 'editing',
     revision: 0,
     updatedAt: now(),
@@ -34,6 +35,7 @@ export function duplicateAssembly(original: Assembly): Assembly {
   copy.id = newId('envelope')
   copy.name = `${original.name.slice(0, 42)} · 替代`
   copy.layers = copy.layers.map((layer) => ({ ...layer, id: newId('ply') }))
+  copy.origin = { id: original.id, name: original.name }
   copy.state = 'editing'
   copy.revision = 0
   copy.updatedAt = now()

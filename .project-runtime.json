@@ -17,6 +17,10 @@
       "command": "npm run smoke -- compare"
     },
     {
+      "workflow_id": "lineage",
+      "command": "npm run smoke -- lineage"
+    },
+    {
       "workflow_id": "document",
       "command": "npm run smoke -- document"
     }

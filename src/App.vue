@@ -5,6 +5,7 @@ import FeedbackBanner from './workspace/FeedbackBanner.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
+import LineageWorkspace from './lineage/LineageWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
@@ -103,6 +104,15 @@ const {
         :busy="busy"
         :dirty="dirty"
         @align="alignAlternative"
+        @design="tab = 'design'"
+      />
+      <LineageWorkspace
+        v-else-if="tab === 'lineage'"
+        :assemblies="data.assemblies"
+        :materials="data.materials"
+        :selected-id="draft.id"
+        :dirty="dirty"
+        @open="select"
         @design="tab = 'design'"
       />
       <DocumentWorkspace

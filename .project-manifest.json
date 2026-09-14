@@ -29,6 +29,11 @@
       "responsibility": "替代方案同口径比较"
     },
     {
+      "id": "lineage",
+      "path": "src/lineage",
+      "responsibility": "构造派生来源的只读谱系追踪"
+    },
+    {
       "id": "documents",
       "path": "src/documents",
       "responsibility": "不可变计算书与下载"
@@ -84,6 +89,25 @@
         "assemblies",
         "carbon",
         "comparison",
+        "persistence"
+      ]
+    },
+    {
+      "id": "lineage",
+      "name": "构造谱系",
+      "entry": "页面：构造谱系 / 复制为替代方案",
+      "steps": [
+        "复制构造时记录派生来源",
+        "按来源链展示构造族与关键差异",
+        "列出来源变化的下游替代方案"
+      ],
+      "success": "谱系树与差异只读呈现且旧数据按基准构造读取",
+      "failure": "来源记录类型错误拒绝读取",
+      "verification": "有界浏览器冒烟命令通过真实页面入口操作并验证持久化结果",
+      "module_ids": [
+        "workspace",
+        "assemblies",
+        "lineage",
         "persistence"
       ]
     },

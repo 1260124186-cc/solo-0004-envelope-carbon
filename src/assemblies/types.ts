@@ -9,6 +9,11 @@ export interface Layer {
   lifespan: number
 }
 
+export interface AssemblyOrigin {
+  id: string
+  name: string
+}
+
 export interface Assembly {
   id: string
   name: string
@@ -19,6 +24,7 @@ export interface Assembly {
   thermalLimit: number
   note: string
   layers: Layer[]
+  origin: AssemblyOrigin | null
   state: AssemblyState
   revision: number
   updatedAt: string

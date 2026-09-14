@@ -1,4 +1,5 @@
 import type { EnvelopeData } from './types'
+import type { Assembly } from '../assemblies/types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -14,6 +15,19 @@ function assertUnique(items: { id: string }[], label: string): void {
       throw new Error(`${label}标识缺失或重复。`)
     }
     ids.add(item.id)
+  }
+}
+
+function normalizeOrigin(assembly: Assembly): void {
+  const origin: unknown = (assembly as { origin?: unknown }).origin
+  if (origin === undefined) {
+    // 谱系能力引入前的构造没有来源记录，按基准构造处理。
+    assembly.origin = null
+    return
+  }
+  if (origin === null) return
+  if (!object(origin) || typeof origin.id !== 'string' || typeof origin.name !== 'string') {
+    throw new Error('构造来源记录无效。')
   }
 }
 
@@ -47,6 +61,7 @@ export function decode(raw: string): EnvelopeData {
       }
     }
     for (const assembly of data.assemblies) {
+      normalizeOrigin(assembly)
       if (!['editing', 'finalized'].includes(assembly.state)) throw new Error('构造状态无效。')
       if (!Number.isInteger(assembly.revision) || assembly.revision < 1)
         throw new Error('修订号无效。')
@@ -54,6 +69,7 @@ export function decode(raw: string): EnvelopeData {
       if (validateAssembly(assembly, data.materials).length) throw new Error('构造参数无效。')
     }
     for (const document of data.documents) {
+      normalizeOrigin(document.assembly)
       if (document.assemblyId !== document.assembly.id || document.assembly.state !== 'finalized') {
         throw new Error('计算书与冻结构造不一致。')
       }

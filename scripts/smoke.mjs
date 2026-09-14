@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'lineage', 'document'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、lineage 或 document 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -32,7 +32,7 @@ try {
   assert.equal(await intensity.innerText(), '90.1')
 
   if (workflow === 'compose') {
-    await button('04 材料参数').click()
+    await button('05 材料参数').click()
     await button('＋ 自定义材料').click()
     await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')
@@ -80,6 +80,47 @@ try {
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
   }
 
+  if (workflow === 'lineage') {
+    await button('复制为替代方案').click()
+    await page.getByLabel('构造名称', { exact: true }).fill('岩棉替代构造')
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('120')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('复制为替代方案').click()
+    await page.getByLabel('构造名称', { exact: true }).fill('岩棉替代构造 · 加厚')
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('150')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    await button('03 构造谱系').click()
+    assert.equal(await page.locator('[data-check="lineage-card"]').count(), 3)
+    await text('基准构造，无派生来源。').waitFor()
+    await text('复制自「庭院样房 · 岩棉外墙」').waitFor()
+    await text('第 2 层厚度由 100 改为 120 毫米。').waitFor()
+    await text('第 2 层厚度由 120 改为 150 毫米。').waitFor()
+    await page
+      .getByLabel('查看构造', { exact: true })
+      .selectOption({ label: '庭院样房 · 岩棉外墙 · 编辑中' })
+    assert.equal(await page.locator('[data-check="impact-item"]').count(), 2)
+
+    // 谱系能力引入前的存储没有来源字段，应按基准构造读取，不得视为数据损坏。
+    await page.evaluate(() => {
+      const key = 'solo-0004-envelope-carbon:design:v1'
+      const data = JSON.parse(localStorage.getItem(key))
+      for (const assembly of data.assemblies) delete assembly.origin
+      localStorage.setItem(key, JSON.stringify(data))
+    })
+    await page.reload()
+    assert.equal(await intensity.innerText(), '90.1')
+    await button('03 构造谱系').click()
+    assert.equal(await page.locator('[data-check="lineage-card"]').count(), 1)
+    await text('基准构造，无派生来源。').waitFor()
+    assert.equal(
+      await page.getByLabel('查看构造', { exact: true }).locator('option').count(),
+      3,
+    )
+  }
+
   if (workflow === 'document') {
     await button('生成定稿').click()
     await text('计算书已定稿，构造现为只读。').waitFor()
@@ -101,10 +142,10 @@ try {
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     assert.notEqual(await intensity.innerText(), '90.1')
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
-    await button('03 计算书').click()
+    await button('04 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
   }
   assert.deepEqual(pageErrors, [])
