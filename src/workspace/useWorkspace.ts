@@ -7,7 +7,7 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
-import { commitData, readData } from '../persistence/repository'
+import { commitData, readData, RevisionConflictError } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
@@ -21,6 +21,7 @@ export function useWorkspace() {
   const error = shallowRef('')
   const busy = shallowRef(false)
   const externalChange = shallowRef(false)
+  const conflictData = shallowRef<EnvelopeData | null>(null)
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
@@ -45,6 +46,14 @@ export function useWorkspace() {
         .slice()
         .reverse() ?? [],
   )
+  const conflictSaved = computed(
+    () => conflictData.value?.assemblies.find((item) => item.id === draft.value?.id) ?? null,
+  )
+  const conflictFindings = computed(() =>
+    draft.value && conflictData.value
+      ? validateAssembly(draft.value, conflictData.value.materials)
+      : [],
+  )
 
   function clearFeedback() {
     notice.value = ''
@@ -68,6 +77,7 @@ export function useWorkspace() {
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
       externalChange.value = false
+      conflictData.value = null
       clearFeedback()
       if (!initial) notice.value = '已重新加载保存版本。'
     } catch (cause) {
@@ -80,6 +90,7 @@ export function useWorkspace() {
     const selected = data.value?.assemblies.find((item) => item.id === id)
     if (!selected) return
     draft.value = clone(selected)
+    conflictData.value = null
     clearFeedback()
     tab.value = 'design'
   }
@@ -87,6 +98,7 @@ export function useWorkspace() {
   function create() {
     if (busy.value || !mayDiscard()) return
     draft.value = createAssembly()
+    conflictData.value = null
     clearFeedback()
     tab.value = 'design'
   }
@@ -101,6 +113,7 @@ export function useWorkspace() {
     draft.value = duplicateAssembly(draft.value)
     alternativeId.value = draft.value.id
     tab.value = 'design'
+    conflictData.value = null
     clearFeedback()
     notice.value = '已创建替代构造草稿，修改后保存即可比较。'
   }
@@ -137,7 +150,11 @@ export function useWorkspace() {
     update({ layers: moveLayer(draft.value.layers, id, direction) })
   }
 
-  async function act(change: (next: EnvelopeData) => void, text: string): Promise<boolean> {
+  async function act(
+    change: (next: EnvelopeData) => void,
+    text: string,
+    onConflict?: () => void,
+  ): Promise<boolean> {
     if (!data.value || busy.value || fatal.value) return false
     clearFeedback()
     busy.value = true
@@ -147,7 +164,11 @@ export function useWorkspace() {
       notice.value = text
       return true
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : '操作未完成，请重试。'
+      if (cause instanceof RevisionConflictError && onConflict) {
+        onConflict()
+      } else {
+        error.value = cause instanceof Error ? cause.message : '操作未完成，请重试。'
+      }
       return false
     } finally {
       busy.value = false
@@ -164,17 +185,101 @@ export function useWorkspace() {
     candidate.name = candidate.name.trim()
     candidate.revision += 1
     candidate.updatedAt = now()
-    const saved = await act((next) => {
-      const index = next.assemblies.findIndex((item) => item.id === candidate.id)
-      if (index >= 0) {
-        requireEditable(next.assemblies[index])
-        next.assemblies[index] = candidate
-      } else {
-        if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
-        next.assemblies.push(candidate)
-      }
-    }, '构造已保存。')
+    const saved = await act(
+      (next) => {
+        const index = next.assemblies.findIndex((item) => item.id === candidate.id)
+        if (index >= 0) {
+          requireEditable(next.assemblies[index])
+          next.assemblies[index] = candidate
+        } else {
+          if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
+          next.assemblies.push(candidate)
+        }
+      },
+      '构造已保存。',
+      openConflictResolution,
+    )
     if (saved) draft.value = clone(candidate)
+  }
+
+  function openConflictResolution() {
+    if (!draft.value || fatal.value) return
+    try {
+      conflictData.value = readData()
+      clearFeedback()
+    } catch (cause) {
+      conflictData.value = null
+      error.value = cause instanceof Error ? cause.message : '无法读取保存版本。'
+    }
+  }
+
+  function closeConflict() {
+    conflictData.value = null
+    clearFeedback()
+  }
+
+  function discardConflictDraft() {
+    if (busy.value) return
+    try {
+      const next = readData()
+      const selectedId = draft.value?.id
+      data.value = next
+      draft.value = clone(
+        next.assemblies.find((item) => item.id === selectedId) ?? next.assemblies[0] ?? null,
+      )
+      conflictData.value = null
+      externalChange.value = false
+      fatal.value = ''
+      clearFeedback()
+      notice.value = '已放弃当前草稿，载入另一标签页保存的版本。'
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '无法读取浏览器存储。'
+    }
+  }
+
+  async function saveAsIndependent() {
+    if (!draft.value || !conflictData.value || busy.value || fatal.value) return
+    clearFeedback()
+    busy.value = true
+    const hadSavedVersion = Boolean(conflictSaved.value)
+    const independent = clone(draft.value)
+    independent.id = newId('envelope')
+    independent.name = hadSavedVersion
+      ? `${independent.name.trim().slice(0, 43)} · 冲突另存`
+      : independent.name.trim()
+    independent.state = 'editing'
+    independent.revision = 1
+    independent.updatedAt = now()
+    independent.layers = independent.layers.map((layer) => ({ ...layer, id: newId('ply') }))
+    try {
+      const committed = await commitData(conflictData.value.stamp, (next) => {
+        if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
+        const findings = validateAssembly(independent, next.materials)
+        if (findings.length) {
+          throw new Error(`另存前校验未通过：${findings.map((finding) => finding.text).join('')}`)
+        }
+        next.assemblies.push(independent)
+      })
+      data.value = committed
+      draft.value = clone(independent)
+      conflictData.value = null
+      externalChange.value = false
+      tab.value = 'design'
+      notice.value = hadSavedVersion
+        ? `已另存为独立构造「${independent.name}」。原构造保留另一标签页保存的版本，两者从此互不影响。`
+        : `草稿已保存为新构造「${independent.name}」，与另一标签页的修改互不影响。`
+    } catch (cause) {
+      if (cause instanceof RevisionConflictError) {
+        openConflictResolution()
+        if (conflictData.value) {
+          error.value = '另一标签页在此期间又保存了新版本，差异已更新。请重新确认后再处理。'
+        }
+      } else {
+        error.value = cause instanceof Error ? cause.message : '操作未完成，请重试。'
+      }
+    } finally {
+      busy.value = false
+    }
   }
 
   async function finalize() {
@@ -285,6 +390,9 @@ export function useWorkspace() {
     fatal,
     busy,
     externalChange,
+    conflictData,
+    conflictSaved,
+    conflictFindings,
     dirty,
     editable,
     findings,
@@ -306,5 +414,9 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    openConflictResolution,
+    closeConflict,
+    discardConflictDraft,
+    saveAsIndependent,
   }
 }

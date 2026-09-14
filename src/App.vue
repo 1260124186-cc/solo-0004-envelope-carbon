@@ -2,6 +2,7 @@
 import { useWorkspace } from './workspace/useWorkspace'
 import WorkspaceHeader from './workspace/WorkspaceHeader.vue'
 import FeedbackBanner from './workspace/FeedbackBanner.vue'
+import ConflictResolver from './workspace/ConflictResolver.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
@@ -16,6 +17,9 @@ const {
   fatal,
   busy,
   externalChange,
+  conflictData,
+  conflictSaved,
+  conflictFindings,
   dirty,
   findings,
   result,
@@ -36,6 +40,10 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  openConflictResolution,
+  closeConflict,
+  discardConflictDraft,
+  saveAsIndependent,
 } = useWorkspace()
 </script>
 
@@ -63,9 +71,22 @@ const {
       <FeedbackBanner
         :error="error"
         :notice="notice"
-        :external-change="externalChange"
+        :external-change="externalChange && !conflictData"
         :busy="busy"
+        :dirty="dirty"
         @reload="load()"
+        @resolve="openConflictResolution"
+      />
+      <ConflictResolver
+        v-if="conflictData"
+        :draft="draft"
+        :saved="conflictSaved"
+        :materials="conflictData.materials"
+        :findings="conflictFindings"
+        :busy="busy"
+        @save-as="saveAsIndependent"
+        @discard="discardConflictDraft"
+        @close="closeConflict"
       />
       <AssemblyPicker
         v-if="tab === 'design' || tab === 'documents'"

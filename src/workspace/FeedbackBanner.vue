@@ -4,8 +4,9 @@ defineProps<{
   notice: string
   externalChange: boolean
   busy: boolean
+  dirty: boolean
 }>()
-const emit = defineEmits<{ reload: [] }>()
+const emit = defineEmits<{ reload: []; resolve: [] }>()
 </script>
 
 <template>
@@ -14,14 +15,26 @@ const emit = defineEmits<{ reload: [] }>()
     class="feedback warning"
     aria-live="polite"
   >
-    <span>另一标签页的保存版本已变化。为避免覆盖，请先重新加载。</span>
-    <button
-      class="button small"
-      :disabled="busy"
-      @click="emit('reload')"
+    <span
+      >另一标签页的保存版本已变化。可重新加载；当前页有未保存修改时，也可保留草稿并处理差异。</span
     >
-      重新加载保存版本
-    </button>
+    <span class="banner-actions">
+      <button
+        v-if="dirty"
+        class="button small"
+        :disabled="busy"
+        @click="emit('resolve')"
+      >
+        保留草稿并处理差异
+      </button>
+      <button
+        class="button small"
+        :disabled="busy"
+        @click="emit('reload')"
+      >
+        重新加载保存版本
+      </button>
+    </span>
   </div>
   <div
     v-if="error"
@@ -51,6 +64,13 @@ const emit = defineEmits<{ reload: [] }>()
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.banner-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .warning {
   background: #fff8e7;

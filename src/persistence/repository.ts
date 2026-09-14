@@ -4,6 +4,13 @@ import { seedData } from './seed'
 import { decode } from './decode'
 import { clone, newId } from '../shared/identity'
 
+export class RevisionConflictError extends Error {
+  constructor() {
+    super('另一标签页已修改设计。请重新加载保存版本，再重试本次修改。')
+    this.name = 'RevisionConflictError'
+  }
+}
+
 export function readData(): EnvelopeData {
   const raw = localStorage.getItem(persistenceKey)
   return raw === null ? seedData() : decode(raw)
@@ -19,7 +26,7 @@ export async function commitData(
   return navigator.locks.request(persistenceKey, () => {
     const latest = readData()
     if (latest.stamp !== expectedStamp) {
-      throw new Error('另一标签页已修改设计。请重新加载保存版本，再重试本次修改。')
+      throw new RevisionConflictError()
     }
     const candidate = clone(latest)
     change(candidate)
