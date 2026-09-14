@@ -134,9 +134,10 @@ export function useWorkspace() {
     notice.value = '已创建替代构造草稿，修改后保存即可比较。'
   }
 
-  function update(patch: Partial<Assembly>, coalesce: string | null = null) {
+  function update(patch: Partial<Assembly>, field: string | null = null) {
     if (!draft.value || !editable.value || busy.value) return
-    commit({ ...draft.value, ...patch }, coalesce)
+    // 基本条件字段的稳定输入身份（与层编辑的 layer:<id>:<field> 互不相混）。
+    commit({ ...draft.value, ...patch }, field === null ? null : `field:${field}`)
     clearFeedback()
   }
 
@@ -150,7 +151,8 @@ export function useWorkspace() {
     commit({ ...draft.value, layers: [...draft.value.layers, createLayer(material)] })
   }
 
-  function updateLayer(id: string, patch: Partial<Layer>, coalesce: string | null = null) {
+  /** 应用一次层编辑；合并身份带上层 id，跨层的同名字段快速修改也各自成步。 */
+  function updateLayer(id: string, patch: Partial<Layer>, field: string | null = null) {
     if (!draft.value || !editable.value || busy.value) return
     commit(
       {
@@ -159,7 +161,7 @@ export function useWorkspace() {
           layer.id === id ? { ...layer, ...patch } : layer,
         ),
       },
-      coalesce,
+      field === null ? null : `layer:${id}:${field}`,
     )
     clearFeedback()
   }

@@ -1,7 +1,7 @@
 import type { Assembly } from './types'
 import { clone } from '../shared/identity'
 
-/** 同一输入框连续输入在此间隔内合并为一个历史步骤。 */
+/** 同一输入身份连续两次输入的最大间隔；每次输入都会续期，停顿超过该时长才断成新步骤。 */
 const COALESCE_WINDOW_MS = 1000
 /** 历史只服务当前编辑，限制内存占用，不承担存档职责。 */
 const HISTORY_LIMIT = 100
@@ -42,7 +42,10 @@ export class EditHistory {
 
   /**
    * 记录一次从 before 到 after 的编辑。
-   * 新修改会清空失效的重做记录；同一 coalesce 来源的连续修改合并为一步。
+   * 新修改会清空失效的重做记录。
+   * coalesce 是“层或基本字段”的稳定输入身份：同一身份的连续输入在时间窗内合并为一步，
+   * 窗口按每次输入续期（滑动窗口），因此连续打字到停笔前始终是一步；
+   * 不同层（即便字段同名）身份不同，必须各自成步。
    */
   record(
     before: Assembly,
@@ -58,6 +61,8 @@ export class EditHistory {
       at - previous.at <= COALESCE_WINDOW_MS
     ) {
       previous.after = clone(after)
+      // 滑动窗口：以本次输入时间续期，连续输入到停笔前保持同一步。
+      previous.at = at
     } else {
       this.past.push({ before: clone(before), after: clone(after), coalesce, at })
       if (this.past.length > HISTORY_LIMIT) {
