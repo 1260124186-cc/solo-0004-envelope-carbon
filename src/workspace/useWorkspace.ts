@@ -2,6 +2,10 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
+import type { AssemblyDraft } from '../drafts/types'
+import type { DraftDiff } from '../drafts/diff'
+import { clearDraft, readDraft, writeDraft } from '../drafts/types'
+import { diffDraft } from '../drafts/diff'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
@@ -10,8 +14,39 @@ import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
+import { date } from '../shared/format'
 
 export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+
+/** 恢复对话框所需的全部上下文。 */
+export interface RecoveryInfo {
+  record: AssemblyDraft
+  saved: Assembly | null
+  stale: boolean
+  finalized: boolean
+  diff: DraftDiff
+}
+
+/** 参与“内容是否相同”判断的字段，排除修订号与更新时间。 */
+const editableFingerprintKeys = [
+  'name',
+  'surface',
+  'area',
+  'years',
+  'carbonLimit',
+  'thermalLimit',
+  'note',
+  'state',
+  'layers',
+] as const
+
+function fingerprint(assembly: Assembly): string {
+  return JSON.stringify(editableFingerprintKeys.map((key) => assembly[key]))
+}
+
+function isBlankNewDraft(assembly: Assembly): boolean {
+  return fingerprint(assembly) === fingerprint(createAssembly())
+}
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -24,6 +59,15 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  const recovery = shallowRef<RecoveryInfo | null>(null)
+  const recoveryError = shallowRef('')
+  const draftStatus = shallowRef('')
+  // 当前编辑上下文的草稿元数据；恢复的过期草稿在保存前需要二次确认。
+  let draftOriginId: string | null = null
+  let draftBaseStamp = ''
+  let draftStartedAt = ''
+  let restoreStale = false
+  let draftTimer: number | undefined
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -55,6 +99,94 @@ export function useWorkspace() {
     return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
   }
 
+  // ── 草稿自动保存（独立存储，不触碰正式数据、修订戳与互斥锁）──────────────
+
+  function resetDraftMeta(originId: string | null, baseStamp: string) {
+    draftOriginId = originId
+    draftBaseStamp = baseStamp
+    draftStartedAt = ''
+    restoreStale = false
+    draftStatus.value = ''
+  }
+
+  function dropDraftSlot() {
+    if (draftTimer !== undefined) {
+      window.clearTimeout(draftTimer)
+      draftTimer = undefined
+    }
+    clearDraft()
+  }
+
+  /** 当前编辑内容是否应占用草稿槽位；无实质内容或与保存版本一致时清除。 */
+  function shouldKeepDraft(current: Assembly): boolean {
+    if (current.state === 'finalized') return false
+    if (draftOriginId !== null) {
+      const saved = data.value?.assemblies.find((item) => item.id === draftOriginId)
+      if (!saved) {
+        // 起点构造已不存在，把未提交内容作为新构造草稿保留。
+        draftOriginId = null
+        draftBaseStamp = data.value?.stamp ?? draftBaseStamp
+        return true
+      }
+      return fingerprint(saved) !== fingerprint(current)
+    }
+    return !isBlankNewDraft(current)
+  }
+
+  function persistDraftNow() {
+    if (draftTimer !== undefined) {
+      window.clearTimeout(draftTimer)
+      draftTimer = undefined
+    }
+    if (!draft.value || busy.value || recovery.value) return
+    if (!shouldKeepDraft(draft.value)) {
+      clearDraft()
+      draftStatus.value = ''
+      return
+    }
+    draftStartedAt = draftStartedAt || now()
+    const record: AssemblyDraft = {
+      draftSchema: 1,
+      assembly: clone(draft.value),
+      originId: draftOriginId,
+      baseStamp: draftBaseStamp,
+      startedAt: draftStartedAt,
+      updatedAt: now(),
+    }
+    try {
+      writeDraft(record)
+      draftStatus.value = `草稿已于 ${date(record.updatedAt)} 自动保存，异常关闭后可恢复`
+    } catch {
+      draftStatus.value = '草稿自动保存失败（存储空间不足或被禁用），正式数据未受影响。'
+    }
+  }
+
+  function scheduleDraftPersist() {
+    if (recovery.value) return
+    if (draftTimer !== undefined) window.clearTimeout(draftTimer)
+    draftTimer = window.setTimeout(persistDraftNow, 800)
+  }
+
+  function inspectStoredDraft(next: EnvelopeData) {
+    const record = readDraft()
+    if (!record) return
+    const saved = record.originId
+      ? (next.assemblies.find((item) => item.id === record.originId) ?? null)
+      : null
+    // 与正式版本完全一致的草稿（改动已被撤销）直接静默清理。
+    if (saved && fingerprint(saved) === fingerprint(record.assembly)) {
+      clearDraft()
+      return
+    }
+    recovery.value = {
+      record,
+      saved,
+      stale: saved !== null && record.baseStamp !== next.stamp,
+      finalized: saved?.state === 'finalized',
+      diff: diffDraft(record.assembly, saved, next.materials),
+    }
+  }
+
   function load(initial = false) {
     if (!initial && !mayDiscard()) return
     try {
@@ -68,8 +200,18 @@ export function useWorkspace() {
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
       externalChange.value = false
-      clearFeedback()
-      if (!initial) notice.value = '已重新加载保存版本。'
+      recovery.value = null
+      recoveryError.value = ''
+      if (initial) {
+        resetDraftMeta(draft.value?.id ?? null, next.stamp)
+        inspectStoredDraft(next)
+        clearFeedback()
+      } else {
+        dropDraftSlot()
+        resetDraftMeta(draft.value?.id ?? null, next.stamp)
+        clearFeedback()
+        notice.value = '已重新加载保存版本。'
+      }
     } catch (cause) {
       fatal.value = cause instanceof Error ? cause.message : '无法读取浏览器存储。'
     }
@@ -79,14 +221,18 @@ export function useWorkspace() {
     if (busy.value || !mayDiscard()) return
     const selected = data.value?.assemblies.find((item) => item.id === id)
     if (!selected) return
+    dropDraftSlot()
     draft.value = clone(selected)
+    resetDraftMeta(selected.id, data.value?.stamp ?? '')
     clearFeedback()
     tab.value = 'design'
   }
 
   function create() {
     if (busy.value || !mayDiscard()) return
+    dropDraftSlot()
     draft.value = createAssembly()
+    resetDraftMeta(null, data.value?.stamp ?? '')
     clearFeedback()
     tab.value = 'design'
   }
@@ -97,8 +243,10 @@ export function useWorkspace() {
       error.value = '请先保存当前构造，再复制替代方案。'
       return
     }
+    dropDraftSlot()
     baselineId.value = draft.value.id
     draft.value = duplicateAssembly(draft.value)
+    resetDraftMeta(null, data.value?.stamp ?? '')
     alternativeId.value = draft.value.id
     tab.value = 'design'
     clearFeedback()
@@ -109,6 +257,7 @@ export function useWorkspace() {
     if (!draft.value || !editable.value || busy.value) return
     draft.value = { ...draft.value, ...patch }
     clearFeedback()
+    scheduleDraftPersist()
   }
 
   function addMaterial(material: Material) {
@@ -160,6 +309,14 @@ export function useWorkspace() {
       error.value = findings.value[0].text
       return
     }
+    if (
+      restoreStale &&
+      !window.confirm(
+        '该草稿基于更早的保存版本，此后正式数据已被其它标签页修改保存。继续保存会用草稿覆盖当前正式构造。\n建议取消并改用「另存为新构造」，是否仍然覆盖保存？',
+      )
+    ) {
+      return
+    }
     const candidate = clone(draft.value)
     candidate.name = candidate.name.trim()
     candidate.revision += 1
@@ -174,7 +331,11 @@ export function useWorkspace() {
         next.assemblies.push(candidate)
       }
     }, '构造已保存。')
-    if (saved) draft.value = clone(candidate)
+    if (saved) {
+      dropDraftSlot()
+      draft.value = clone(candidate)
+      resetDraftMeta(candidate.id, data.value.stamp)
+    }
   }
 
   async function finalize() {
@@ -193,7 +354,9 @@ export function useWorkspace() {
       assembly.updatedAt = now()
     }, '计算书已定稿，构造现为只读。')
     if (saved) {
+      dropDraftSlot()
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      resetDraftMeta(id, data.value!.stamp)
       tab.value = 'documents'
     }
   }
@@ -211,6 +374,7 @@ export function useWorkspace() {
     }, '已重新开启编辑，历史计算书保持不变。')
     if (saved) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      resetDraftMeta(id, data.value!.stamp)
       tab.value = 'design'
     }
   }
@@ -250,10 +414,80 @@ export function useWorkspace() {
     }, '替代构造已按基准统一部位、面积和年限。')
     if (saved && draft.value) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
+      resetDraftMeta(draft.value.id, data.value!.stamp)
     }
   }
 
+  // ── 草稿恢复决策 ─────────────────────────────────────────────────────────
+
+  function restoreDraft() {
+    const info = recovery.value
+    if (!info || busy.value) return
+    draft.value = clone(info.record.assembly)
+    draftOriginId = info.record.originId
+    draftBaseStamp = info.record.baseStamp
+    draftStartedAt = info.record.startedAt
+    restoreStale = info.stale
+    recovery.value = null
+    recoveryError.value = ''
+    clearFeedback()
+    tab.value = 'design'
+    draftStatus.value = `草稿自动保存于 ${date(info.record.updatedAt)}，保存前请再次核对`
+    notice.value = info.stale
+      ? '已恢复过期草稿：正式版本之后被其它标签页修改过。保存草稿前会再次要求确认，避免覆盖。'
+      : '已恢复上次自动保存的草稿，请核对后再保存或放弃。'
+  }
+
+  function discardDraft() {
+    if (busy.value) return
+    dropDraftSlot()
+    recovery.value = null
+    recoveryError.value = ''
+    restoreStale = false
+    draftStatus.value = ''
+    clearFeedback()
+    notice.value = '草稿已放弃，编辑区保持最近保存版本，正式数据未受影响。'
+  }
+
+  async function saveDraftAs() {
+    const info = recovery.value
+    if (!info || !data.value || busy.value) return
+    if (!info.saved) {
+      recoveryError.value = '这是尚未保存过的新构造草稿，请直接恢复后使用「保存构造」。'
+      return
+    }
+    const candidate = clone(info.record.assembly)
+    const problems = validateAssembly(candidate, data.value.materials)
+    if (problems.length) {
+      recoveryError.value = `草稿内容尚不能保存：${problems[0].text} 请先恢复到编辑区修正。`
+      return
+    }
+    candidate.id = newId('envelope')
+    candidate.layers = candidate.layers.map((layer) => ({ ...layer, id: newId('ply') }))
+    candidate.name = `${candidate.name.trim().slice(0, 42)} · 草稿另存`
+    candidate.state = 'editing'
+    candidate.revision = 1
+    candidate.updatedAt = now()
+    const success = await act((next) => {
+      if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
+      next.assemblies.push(candidate)
+    }, '草稿已另存为新构造，原构造保持不变。')
+    if (!success) {
+      // 错误信息展示在恢复对话框内，避免关闭后消失。
+      recoveryError.value = error.value
+      error.value = ''
+      return
+    }
+    dropDraftSlot()
+    draft.value = clone(candidate)
+    resetDraftMeta(candidate.id, data.value.stamp)
+    recovery.value = null
+    recoveryError.value = ''
+    tab.value = 'design'
+  }
+
   function onStorage(event: StorageEvent) {
+    // 仅正式设计命名空间的变化触发跨标签页保护；草稿槽位变化不影响正式数据。
     if (
       event.storageArea === localStorage &&
       (event.key === persistenceKey || event.key === null)
@@ -263,17 +497,27 @@ export function useWorkspace() {
   }
 
   function beforeUnload(event: BeforeUnloadEvent) {
+    persistDraftNow()
     if (dirty.value) event.preventDefault()
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') persistDraftNow()
   }
 
   onMounted(() => {
     load(true)
     window.addEventListener('storage', onStorage)
     window.addEventListener('beforeunload', beforeUnload)
+    window.addEventListener('pagehide', beforeUnload)
+    document.addEventListener('visibilitychange', onVisibilityChange)
   })
   onUnmounted(() => {
+    if (draftTimer !== undefined) window.clearTimeout(draftTimer)
     window.removeEventListener('storage', onStorage)
     window.removeEventListener('beforeunload', beforeUnload)
+    window.removeEventListener('pagehide', beforeUnload)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
   })
 
   return {
@@ -292,6 +536,9 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    recovery,
+    recoveryError,
+    draftStatus,
     load,
     select,
     create,
@@ -306,5 +553,8 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    restoreDraft,
+    discardDraft,
+    saveDraftAs,
   }
 }

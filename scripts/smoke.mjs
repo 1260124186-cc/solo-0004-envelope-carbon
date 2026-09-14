@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'recover'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 recover 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,138 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+
+  if (workflow === 'recover') {
+    const draftKey = 'solo-0004-envelope-carbon:draft:v1'
+    const designKey = 'solo-0004-envelope-carbon:design:v1'
+    const dialogTitle = () =>
+      page.getByRole('heading', { name: '发现未提交的构造草稿', exact: true })
+    const storedDraft = () => page.evaluate((key) => localStorage.getItem(key), draftKey)
+
+    // 0. 新建构造在未输入实质内容前不占用草稿槽位。
+    await button('＋ 新建构造').click()
+    await page.waitForTimeout(1200)
+    assert.equal(await storedDraft(), null)
+    await page.getByLabel('构造名称', { exact: true }).fill('事故前未保存构造')
+    await page.getByLabel('添加构造层', { exact: true }).selectOption({ label: '普通混凝土' })
+    await button('＋ 添加这一层').click()
+    await page.getByText('自动保存', { exact: false }).waitFor()
+    const newDraft = JSON.parse(await storedDraft())
+    assert.equal(newDraft.originId, null)
+    await page.reload()
+    await dialogTitle().waitFor()
+    await page.getByText('这是一份尚未保存过的新构造草稿').waitFor()
+    // 新构造草稿没有“另存”入口，避免创建语义不明的副本。
+    assert.equal(await button('另存为新构造').isEnabled(), false)
+    await button('放弃草稿').click()
+    await text('草稿已放弃，编辑区保持最近保存版本，正式数据未受影响。').waitFor()
+    assert.equal(await storedDraft(), null)
+
+    // 1. 编辑现有构造但不保存，等待独立草稿槽位自动保存。
+    await page.getByLabel('构造名称', { exact: true }).fill('庭院样房 · 岩棉外墙（草稿改名）')
+    await page.getByLabel('构造面积（平方米）', { exact: true }).fill('120')
+    await page.getByText('自动保存', { exact: false }).waitFor()
+    assert.ok(await storedDraft())
+    assert.notEqual(await storedDraft(), null)
+    const draftRecord = JSON.parse(await storedDraft())
+    assert.equal(draftRecord.originId, 'envelope-courtyard')
+    assert.equal(draftRecord.assembly.area, 120)
+
+    // 2. 刷新后先弹出恢复提示并展示差异，正式选择列表仍只含正式构造。
+    await page.reload()
+    await dialogTitle().waitFor()
+    await page.getByText('构造面积（平方米）').first().waitFor()
+    await page.getByText('100', { exact: true }).first().waitFor()
+    await page.getByText('120', { exact: true }).first().waitFor()
+    const pickerOptions = await page.getByLabel('当前构造', { exact: true }).innerText()
+    assert.ok(pickerOptions.includes('庭院样房 · 岩棉外墙 · 编辑中'))
+    assert.ok(!pickerOptions.includes('草稿改名'))
+
+    // 3. 放弃草稿：槽位清空，正式数据保持原值。
+    page.once('dialog', (native) => native.accept())
+    await button('放弃草稿').click()
+    await text('草稿已放弃，编辑区保持最近保存版本，正式数据未受影响。').waitFor()
+    assert.equal(await storedDraft(), null)
+    assert.equal(
+      await page.getByLabel('构造名称', { exact: true }).inputValue(),
+      '庭院样房 · 岩棉外墙',
+    )
+    assert.equal(await page.getByLabel('构造面积（平方米）', { exact: true }).inputValue(), '100')
+
+    // 4. 再次制造草稿并恢复到编辑区。
+    await page.getByLabel('构造面积（平方米）', { exact: true }).fill('130')
+    await page.getByText('自动保存', { exact: false }).waitFor()
+    await page.reload()
+    await dialogTitle().waitFor()
+    await button('恢复到编辑区').click()
+    await text('已恢复上次自动保存的草稿，请核对后再保存或放弃。').waitFor()
+    assert.equal(await page.getByLabel('构造面积（平方米）', { exact: true }).inputValue(), '130')
+    assert.equal(
+      await page.getByLabel('当前构造', { exact: true }).inputValue(),
+      'envelope-courtyard',
+    )
+
+    // 5. 刷新仍提示同一草稿；选择另存，原构造不变，新构造进入正式列表，槽位清空。
+    await page.reload()
+    await dialogTitle().waitFor()
+    await button('另存为新构造').click()
+    await text('草稿已另存为新构造，原构造保持不变。').waitFor()
+    assert.equal(await storedDraft(), null)
+    assert.equal(await page.getByLabel('构造面积（平方米）', { exact: true }).inputValue(), '130')
+    const afterSave = await page.evaluate((key) => {
+      const data = JSON.parse(localStorage.getItem(key))
+      return data.assemblies.map((item) => ({
+        name: item.name,
+        area: item.area,
+        revision: item.revision,
+      }))
+    }, designKey)
+    const original = afterSave.find((item) => item.name === '庭院样房 · 岩棉外墙')
+    const savedCopy = afterSave.find((item) => item.name === '庭院样房 · 岩棉外墙 · 草稿另存')
+    assert.ok(original && original.area === 100 && original.revision === 1)
+    assert.ok(savedCopy && savedCopy.area === 130 && savedCopy.revision === 1)
+
+    // 6. 跨标签页修订保护：恢复过期草稿后直接保存需明确确认，取消则不覆盖。
+    await page.getByLabel('构造面积（平方米）', { exact: true }).fill('140')
+    await page.getByText('自动保存', { exact: false }).waitFor()
+    const copyId = await page.getByLabel('当前构造', { exact: true }).inputValue()
+    await page.evaluate(
+      ([key, id]) => {
+        const data = JSON.parse(localStorage.getItem(key))
+        const item = data.assemblies.find((assembly) => assembly.id === id)
+        item.area = 150
+        item.revision += 1
+        data.stamp = 'revision-tampered-by-other-tab'
+        localStorage.setItem(key, JSON.stringify(data))
+      },
+      [designKey, copyId],
+    )
+    await page.reload()
+    await dialogTitle().waitFor()
+    await page.getByText('正式数据已在其它标签页或会话中被修改并保存').waitFor()
+    await button('恢复到编辑区').click()
+    page.once('dialog', (native) => native.dismiss())
+    await button('保存构造').click()
+    const afterCancel = await page.evaluate(
+      ([key, id]) => JSON.parse(localStorage.getItem(key)).assemblies.find((a) => a.id === id).area,
+      [designKey, copyId],
+    )
+    assert.equal(afterCancel, 150)
+    // 取消后编辑区仍保留草稿值，且没有出现保存成功提示。
+    assert.equal(await page.getByLabel('构造面积（平方米）', { exact: true }).inputValue(), '140')
+    assert.equal(await button('保存构造').isEnabled(), true)
+
+    // 用户已看过与最新保存版本（150）的差异及过期警告，明确确认后可知情覆盖；
+    // 修订锁仍会拦截会话期间其它标签页的并发写入。
+    page.once('dialog', (native) => native.accept())
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    const afterConfirm = await page.evaluate(
+      ([key, id]) => JSON.parse(localStorage.getItem(key)).assemblies.find((a) => a.id === id).area,
+      [designKey, copyId],
+    )
+    assert.equal(afterConfirm, 140)
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

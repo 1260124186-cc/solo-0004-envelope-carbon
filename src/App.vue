@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import DraftRecoveryDialog from './drafts/DraftRecoveryDialog.vue'
 const {
   data,
   draft,
@@ -22,6 +23,9 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  recovery,
+  recoveryError,
+  draftStatus,
   load,
   select,
   create,
@@ -36,6 +40,9 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  restoreDraft,
+  discardDraft,
+  saveDraftAs,
 } = useWorkspace()
 </script>
 
@@ -85,6 +92,7 @@ const {
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
+        :draft-status="draftStatus"
         @update="update"
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
@@ -130,6 +138,20 @@ const {
       正在准备构造工作区…
     </div>
   </main>
+  <DraftRecoveryDialog
+    v-if="recovery"
+    :saved-at="recovery.record.updatedAt"
+    :name="recovery.record.assembly.name"
+    :origin-exists="Boolean(recovery.saved)"
+    :stale="recovery.stale"
+    :finalized="recovery.finalized"
+    :diff="recovery.diff"
+    :busy="busy"
+    :error="recoveryError"
+    @restore="restoreDraft"
+    @discard="discardDraft"
+    @save-as="saveDraftAs"
+  />
   <footer class="site-footer">
     <span>围护碳研 · 从构造出发</span><span>设计保存在当前浏览器 · 示例物性仅供教学</span>
   </footer>
