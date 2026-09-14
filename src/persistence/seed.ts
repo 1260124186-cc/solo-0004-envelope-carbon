@@ -16,10 +16,11 @@ export function seedData(): EnvelopeData {
     { id: 'ply-interior', materialId: 'env-gypsum', thickness: 12.5, loss: 3, lifespan: 25 },
   ]
   return {
-    schema: 1,
+    schema: 2,
     stamp: 'initial',
     assemblies: [assembly],
     materials: clone(referenceMaterials),
     documents: [],
+    breakdowns: [],
   }
 }

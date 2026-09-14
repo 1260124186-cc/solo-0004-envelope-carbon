@@ -7,11 +7,12 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { createBreakdownSnapshot } from '../breakdown/snapshot'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'breakdown'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -253,6 +254,15 @@ export function useWorkspace() {
     }
   }
 
+  async function saveBreakdown(assemblyId: string) {
+    await act((next) => {
+      const assembly = next.assemblies.find((item) => item.id === assemblyId)
+      if (!assembly) throw new Error('构造不存在。')
+      if (next.breakdowns.length >= 200) throw new Error('分解快照已达到 200 份容量上限。')
+      next.breakdowns.push(createBreakdownSnapshot(assembly, next.materials))
+    }, '分解快照已保存，冻结当前修订与材料物性。')
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -306,5 +316,6 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    saveBreakdown,
   }
 }

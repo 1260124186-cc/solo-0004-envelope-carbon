@@ -2,6 +2,7 @@ import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
+import { decompose } from '../breakdown/decompose'
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -20,7 +21,11 @@ function assertUnique(items: { id: string }[], label: string): void {
 export function decode(raw: string): EnvelopeData {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!object(parsed) || parsed.schema !== 1 || typeof parsed.stamp !== 'string') {
+    if (
+      !object(parsed) ||
+      (parsed.schema !== 1 && parsed.schema !== 2) ||
+      typeof parsed.stamp !== 'string'
+    ) {
       throw new Error('存储版本不受支持。')
     }
     if (
@@ -30,17 +35,21 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
-    const data = parsed as unknown as EnvelopeData
+    // schema 1 没有分解快照集合；旧计算书在下方按当前引擎重算迁移。
+    const breakdowns = Array.isArray(parsed.breakdowns) ? parsed.breakdowns : []
+    const data = { ...parsed, schema: 2, breakdowns } as unknown as EnvelopeData
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > 1000 ||
+      data.breakdowns.length > 200
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    assertUnique(data.breakdowns, '分解快照')
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
@@ -58,11 +67,27 @@ export function decode(raw: string): EnvelopeData {
         throw new Error('计算书与冻结构造不一致。')
       }
       if (!Number.isFinite(Date.parse(document.createdAt))) throw new Error('计算书时间无效。')
+      // schema 1 的计算书按上一版求和顺序冻结，读取时用冻结输入按当前引擎重算。
+      if (parsed.schema === 1) {
+        document.result = calculate(document.assembly, document.materials)
+      }
       if (
         JSON.stringify(calculate(document.assembly, document.materials)) !==
         JSON.stringify(document.result)
       ) {
         throw new Error('计算书结果与冻结输入不一致。')
+      }
+    }
+    for (const snapshot of data.breakdowns) {
+      if (snapshot.assemblyId !== snapshot.assembly.id) {
+        throw new Error('分解快照与冻结构造不一致。')
+      }
+      if (!Number.isFinite(Date.parse(snapshot.createdAt))) throw new Error('分解快照时间无效。')
+      if (
+        JSON.stringify(decompose(snapshot.assembly, snapshot.materials)) !==
+        JSON.stringify(snapshot.breakdown)
+      ) {
+        throw new Error('分解快照结果与冻结输入不一致。')
       }
     }
     return data

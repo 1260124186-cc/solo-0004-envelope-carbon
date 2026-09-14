@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'breakdown'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 breakdown 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,43 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'breakdown') {
+    await button('05 贡献分解').click()
+    const breakdownIntensity = page.locator('[data-check="breakdown-intensity"]')
+    await breakdownIntensity.waitFor()
+    assert.equal(await breakdownIntensity.innerText(), '90.1')
+    assert.equal(await page.locator('[data-check="breakdown-initial"]').innerText(), '61.35')
+    assert.equal(await page.locator('[data-check="breakdown-replacement"]').innerText(), '28.76')
+    assert.match(await page.locator('[data-check="reconcile-status"]').innerText(), /对账通过/)
+    await text('来源构造层').waitFor()
+
+    await button('查看第 2 层贡献').click()
+    await page.locator('[data-check="removal-delta"]').waitFor()
+    assert.equal(await page.locator('[data-check="removal-delta"]').innerText(), '-29.66')
+    await page.getByLabel('试算厚度（毫米）', { exact: true }).fill('200')
+    assert.equal(await page.locator('[data-check="thickness-delta"]').innerText(), '+29.66')
+
+    await button('保存分解快照').click()
+    await text('分解快照已保存，冻结当前修订与材料物性。').waitFor()
+    await page.reload()
+    await button('05 贡献分解').click()
+    await page.getByLabel('已保存快照', { exact: true }).selectOption({ index: 1 })
+    const banner = page.locator('[data-check="snapshot-banner"]')
+    await banner.waitFor()
+    assert.match(await banner.innerText(), /物性已冻结/)
+    assert.equal(await breakdownIntensity.innerText(), '90.1')
+
+    await button('01 构造编辑').click()
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('200')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('05 贡献分解').click()
+    await breakdownIntensity.waitFor()
+    assert.notEqual(await breakdownIntensity.innerText(), '90.1')
+    await page.getByLabel('已保存快照', { exact: true }).selectOption({ index: 1 })
+    await page.locator('[data-check="snapshot-banner"]').waitFor()
+    assert.equal(await breakdownIntensity.innerText(), '90.1')
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

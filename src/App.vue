@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import BreakdownWorkspace from './breakdown/BreakdownWorkspace.vue'
 const {
   data,
   draft,
@@ -36,6 +37,7 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  saveBreakdown,
 } = useWorkspace()
 </script>
 
@@ -114,6 +116,16 @@ const {
         :valid="Boolean(result)"
         @finalize="finalize"
         @reopen="reopen"
+        @design="tab = 'design'"
+      />
+      <BreakdownWorkspace
+        v-else-if="tab === 'breakdown'"
+        :assemblies="data.assemblies"
+        :materials="data.materials"
+        :breakdowns="data.breakdowns"
+        :busy="busy"
+        :dirty-draft-id="dirty ? draft.id : null"
+        @save="saveBreakdown"
         @design="tab = 'design'"
       />
       <MaterialWorkspace

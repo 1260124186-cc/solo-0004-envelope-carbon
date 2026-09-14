@@ -15,6 +15,21 @@ export function signed(value: number): string {
   return `${value > 0 ? '+' : ''}${number(value)}`
 }
 
+const percentFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+
+export function percent(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  return `${percentFormatter.format(value * 100)}%`
+}
+
+export function signedPercent(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  return `${value > 0 ? '+' : ''}${percent(value)}`
+}
+
 export function date(value: string): string {
   const parsed = new Date(value)
   if (!Number.isFinite(parsed.getTime())) return '时间未知'
