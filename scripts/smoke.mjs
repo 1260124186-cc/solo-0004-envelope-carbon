@@ -106,6 +106,63 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+
+    // 只有一份计算书时，两版对照给出提示而不是结果。
+    await page.locator('[data-check="mode-diff"]').click()
+    await page.locator('[data-check="diff-unavailable"]').waitFor()
+    assert.equal(await page.locator('[data-check="diff-layer"]').count(), 0)
+
+    // 生成第二份定稿（第 2 层厚度 100 → 200），默认对照最新两版。
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    await page.locator('[data-check="diff-layer-param"]').waitFor()
+    assert.equal(await page.locator('[data-check="diff-layer-moved"]').count(), 0)
+    assert.equal(await page.locator('[data-check="diff-layer-replaced"]').count(), 0)
+    assert.notEqual(await page.locator('[data-check="diff-intensity-delta"]').innerText(), '0')
+
+    // 切换查看版本不生成新定稿：两个选择框始终只有两份；选成同一版本给出提示。
+    const beforeSelect = page.locator('.diff-selectors select').first()
+    const afterSelect = page.locator('.diff-selectors select').nth(1)
+    assert.equal(await beforeSelect.locator('option').count(), 2)
+    await beforeSelect.selectOption({ index: 0 })
+    assert.equal(await beforeSelect.locator('option').count(), 2)
+    await page.locator('[data-check="diff-warning"]').waitFor()
+    assert.equal(await page.locator('[data-check="diff-layer"]').count(), 0)
+    // 恢复成不同版本，对照恢复。
+    await beforeSelect.selectOption({ index: 1 })
+    await page.locator('[data-check="diff-layer-param"]').waitFor()
+    // 再次确认全程没有新增定稿。
+    assert.equal(await afterSelect.locator('option').count(), 2)
+
+    // 第三份定稿：仅调整层顺序（第 2 层上移），参数不变。
+    await button('重新开启编辑').click()
+    await text('已重新开启编辑，历史计算书保持不变。').waitFor()
+    await button('上移第 2 层').click()
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    await page.locator('[data-check="mode-diff"]').click()
+    await page.locator('[data-check="diff-layer-moved"]').first().waitFor()
+    // 按稳定标识配对：纯调序识别为「顺序调整」，不出现材料替换或参数调整。
+    assert.ok((await page.locator('[data-check="diff-layer-moved"]').count()) >= 2)
+    assert.equal(await page.locator('[data-check="diff-layer-replaced"]').count(), 0)
+    assert.equal(await page.locator('[data-check="diff-layer-param"]').count(), 0)
+    // 顺序不影响汇总结果。
+    assert.equal(await page.locator('[data-check="diff-intensity-delta"]').innerText(), '0')
+    // 按稳定标识配对：互换的是原来第 1、2 层（石灰砂浆、岩棉板），不是按行号当成同层。
+    const movedNames = await page
+      .locator('.layer-diff')
+      .filter({ has: page.locator('[data-check="diff-layer-moved"]') })
+      .locator('.layer-diff-name')
+      .allInnerTexts()
+    assert.ok(movedNames.includes('岩棉板'))
+    assert.ok(movedNames.includes('石灰砂浆'))
+
+    // 对照全过程不改写旧版：单版查看最早定稿仍为冻结原值。
+    await page.locator('[data-check="mode-single"]').click()
+    await page.getByLabel('历史计算书', { exact: true }).selectOption({ index: 2 })
+    assert.equal(await frozen.innerText(), '90.1')
   }
   assert.deepEqual(pageErrors, [])
   await context.close()
