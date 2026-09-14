@@ -66,7 +66,7 @@ onMounted(() => dialogRef.value?.focus())
         class="situation new"
         role="status"
       >
-        这是一份尚未保存过的新构造草稿，正式列表中还没有对应构造。恢复后仅进入编辑区，需要手动保存才会成为正式构造。
+        这是一份尚未保存过的新构造草稿，正式列表中还没有对应构造。可直接「另存为新构造」将其保存为正式构造；也可先恢复到编辑区继续调整。
       </div>
       <div
         v-else-if="props.stale"
@@ -184,10 +184,10 @@ onMounted(() => dialogRef.value?.focus())
         </button>
         <button
           class="button"
-          :disabled="props.busy || !props.originExists"
+          :disabled="props.busy"
           :title="
             !props.originExists
-              ? '新构造请直接恢复后保存'
+              ? '直接将这份未保存草稿创建为正式构造'
               : '以草稿内容创建一个新的正式构造，原构造保持不变'
           "
           @click="emit('saveAs')"

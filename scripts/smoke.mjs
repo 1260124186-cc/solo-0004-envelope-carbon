@@ -115,7 +115,7 @@ try {
       page.getByRole('heading', { name: '发现未提交的构造草稿', exact: true })
     const storedDraft = () => page.evaluate((key) => localStorage.getItem(key), draftKey)
 
-    // 0. 新建构造在未输入实质内容前不占用草稿槽位。
+    // 0. 新建构造在未输入实质内容前不占用草稿槽位；有实质内容后自动保存。
     await button('＋ 新建构造').click()
     await page.waitForTimeout(1200)
     assert.equal(await storedDraft(), null)
@@ -125,14 +125,45 @@ try {
     await page.getByText('自动保存', { exact: false }).waitFor()
     const newDraft = JSON.parse(await storedDraft())
     assert.equal(newDraft.originId, null)
+
+    // 0b. 事故恢复：新构造草稿也可直接「另存为新构造」，点击即创建正式构造。
     await page.reload()
     await dialogTitle().waitFor()
     await page.getByText('这是一份尚未保存过的新构造草稿').waitFor()
-    // 新构造草稿没有“另存”入口，避免创建语义不明的副本。
-    assert.equal(await button('另存为新构造').isEnabled(), false)
-    await button('放弃草稿').click()
-    await text('草稿已放弃，编辑区保持最近保存版本，正式数据未受影响。').waitFor()
+    assert.equal(await button('另存为新构造').isEnabled(), true)
+    await button('另存为新构造').click()
+    await text('草稿已保存为正式构造。').waitFor()
     assert.equal(await storedDraft(), null)
+    assert.equal(
+      await page.getByLabel('构造名称', { exact: true }).inputValue(),
+      '事故前未保存构造',
+    )
+    assert.equal(await page.getByLabel('第 1 层厚度', { exact: true }).inputValue(), '200')
+    assert.equal(
+      await page.getByLabel('当前构造', { exact: true }).inputValue(),
+      newDraft.assembly.id,
+    )
+    await text('已保存 · 修订 1').waitFor()
+    const formalAfterSave = await page.evaluate((key) => {
+      const data = JSON.parse(localStorage.getItem(key))
+      return {
+        count: data.assemblies.length,
+        created: data.assemblies.find((item) => item.name === '事故前未保存构造'),
+        courtyard: data.assemblies.find((item) => item.id === 'envelope-courtyard'),
+      }
+    }, designKey)
+    assert.equal(formalAfterSave.count, 2)
+    assert.equal(formalAfterSave.created.id, newDraft.assembly.id)
+    assert.equal(formalAfterSave.created.revision, 1)
+    assert.equal(formalAfterSave.created.state, 'editing')
+    assert.equal(formalAfterSave.created.layers.length, 1)
+    assert.equal(formalAfterSave.courtyard.area, 100)
+    assert.equal(formalAfterSave.courtyard.revision, 1)
+
+    // 回到种子构造，继续后续已保存构造的草稿流程。
+    await page
+      .getByLabel('当前构造', { exact: true })
+      .selectOption({ label: '庭院样房 · 岩棉外墙 · 编辑中' })
 
     // 1. 编辑现有构造但不保存，等待独立草稿槽位自动保存。
     await page.getByLabel('构造名称', { exact: true }).fill('庭院样房 · 岩棉外墙（草稿改名）')

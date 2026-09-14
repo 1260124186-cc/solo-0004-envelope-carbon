@@ -452,26 +452,34 @@ export function useWorkspace() {
   async function saveDraftAs() {
     const info = recovery.value
     if (!info || !data.value || busy.value) return
-    if (!info.saved) {
-      recoveryError.value = '这是尚未保存过的新构造草稿，请直接恢复后使用「保存构造」。'
-      return
-    }
+    const isNew = info.saved === null
     const candidate = clone(info.record.assembly)
     const problems = validateAssembly(candidate, data.value.materials)
     if (problems.length) {
       recoveryError.value = `草稿内容尚不能保存：${problems[0].text} 请先恢复到编辑区修正。`
       return
     }
-    candidate.id = newId('envelope')
-    candidate.layers = candidate.layers.map((layer) => ({ ...layer, id: newId('ply') }))
-    candidate.name = `${candidate.name.trim().slice(0, 42)} · 草稿另存`
+    if (isNew) {
+      // 新构造草稿的标识从未进入正式存储，可直接沿用；用户起的名称也保持原样。
+      candidate.name = candidate.name.trim()
+      if (data.value.assemblies.some((item) => item.id === candidate.id)) {
+        candidate.id = newId('envelope')
+      }
+    } else {
+      candidate.id = newId('envelope')
+      candidate.layers = candidate.layers.map((layer) => ({ ...layer, id: newId('ply') }))
+      candidate.name = `${candidate.name.trim().slice(0, 42)} · 草稿另存`
+    }
     candidate.state = 'editing'
     candidate.revision = 1
     candidate.updatedAt = now()
-    const success = await act((next) => {
-      if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
-      next.assemblies.push(candidate)
-    }, '草稿已另存为新构造，原构造保持不变。')
+    const success = await act(
+      (next) => {
+        if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
+        next.assemblies.push(candidate)
+      },
+      isNew ? '草稿已保存为正式构造。' : '草稿已另存为新构造，原构造保持不变。',
+    )
     if (!success) {
       // 错误信息展示在恢复对话框内，避免关闭后消失。
       recoveryError.value = error.value
