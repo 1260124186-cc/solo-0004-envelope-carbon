@@ -1,17 +1,20 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { Compliance, ComplianceRule } from '../compliance/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
+import { evaluateCompliance } from '../compliance/engine'
+import { validateComplianceRule } from '../compliance/validation'
 import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'rules'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
@@ -31,12 +34,30 @@ export function useWorkspace() {
     Boolean(draft.value && JSON.stringify(draft.value) !== JSON.stringify(persisted.value)),
   )
   const editable = computed(() => draft.value?.state === 'editing')
-  const findings = computed(() =>
-    draft.value ? validateAssembly(draft.value, data.value?.materials ?? []) : [],
-  )
+  const findings = computed(() => {
+    if (!draft.value) return []
+    const issues = validateAssembly(draft.value, data.value?.materials ?? [])
+    if (
+      draft.value.ruleId &&
+      !(data.value?.rules ?? []).some((rule) => rule.id === draft.value!.ruleId)
+    ) {
+      issues.push({
+        path: 'ruleId',
+        text: '所选达标规则不存在，请改用其它规则或切回构造自带目标。',
+      })
+    }
+    return issues
+  })
   const result = computed(() => {
     if (!draft.value || !data.value || findings.value.length) return null
     return calculate(draft.value, data.value.materials)
+  })
+  const selectedRule = computed<ComplianceRule | null>(
+    () => data.value?.rules.find((rule) => rule.id === draft.value?.ruleId) ?? null,
+  )
+  const compliance = computed<Compliance | null>(() => {
+    if (!draft.value || !result.value) return null
+    return evaluateCompliance(draft.value, result.value, selectedRule.value)
   })
   const selectedDocuments = computed(
     () =>
@@ -187,7 +208,14 @@ export function useWorkspace() {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
       if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
-      const document = createDocument(assembly, next.materials)
+      // 定稿必须引用启用中的规则；停用规则的判定依据仍由历史计算书快照保留。
+      const rule = assembly.ruleId
+        ? (next.rules.find((item) => item.id === assembly.ruleId) ?? null)
+        : null
+      if (assembly.ruleId && (!rule || !rule.active)) {
+        throw new Error('所选达标规则已停用，请改选启用中的规则或切回构造自带目标后再定稿。')
+      }
+      const document = createDocument(assembly, next.materials, rule)
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
@@ -253,6 +281,74 @@ export function useWorkspace() {
     }
   }
 
+  async function saveRule(draftRule: {
+    id?: string
+    name: string
+    description: string
+    conditions: ComplianceRule['conditions']
+  }): Promise<boolean> {
+    const candidate: ComplianceRule = {
+      id: draftRule.id || newId('compliance-rule'),
+      name: draftRule.name.trim(),
+      description: draftRule.description,
+      conditions: clone(draftRule.conditions),
+      active: true,
+      builtIn: false,
+      createdAt: now(),
+      updatedAt: now(),
+    }
+    const issues = validateComplianceRule(candidate)
+    if (issues.length) {
+      error.value = issues[0]
+      return false
+    }
+    return act(
+      (next) => {
+        if (next.rules.length >= 100) throw new Error('最多保存 100 条达标规则。')
+        if (
+          next.rules.some((rule) => rule.id !== candidate.id && rule.name.trim() === candidate.name)
+        ) {
+          throw new Error('规则名称已存在，请使用可区分的名称。')
+        }
+        const index = next.rules.findIndex((rule) => rule.id === candidate.id)
+        if (index >= 0) {
+          const existing = next.rules[index]
+          if (existing.builtIn) throw new Error('内置示例规则不可修改，可复制后另存为自定义规则。')
+          // 只更新名称、说明与条件；启停状态与创建时间保持不变。
+          next.rules[index] = {
+            ...existing,
+            name: candidate.name,
+            description: candidate.description,
+            conditions: candidate.conditions,
+            updatedAt: candidate.updatedAt,
+          }
+        } else {
+          next.rules.push(candidate)
+        }
+      },
+      draftRule.id
+        ? '达标规则已修改，历史计算书的判定依据保持不变。'
+        : '达标规则已保存，可在构造中选用。',
+    )
+  }
+
+  async function setRuleActive(id: string, active: boolean): Promise<boolean> {
+    return act(
+      (next) => {
+        const rule = next.rules.find((item) => item.id === id)
+        if (!rule) throw new Error('达标规则不存在。')
+        if (rule.builtIn) throw new Error('内置示例规则不可停用。')
+        rule.active = active
+        rule.updatedAt = now()
+      },
+      active ? '达标规则已重新启用。' : '达标规则已停用，历史计算书仍保留其判定依据。',
+    )
+  }
+
+  function ruleUsageCount(id: string): number {
+    return data.value?.assemblies.filter((assembly) => assembly.ruleId === id).length ?? 0
+  }
+
   function onStorage(event: StorageEvent) {
     if (
       event.storageArea === localStorage &&
@@ -289,6 +385,8 @@ export function useWorkspace() {
     editable,
     findings,
     result,
+    selectedRule,
+    compliance,
     selectedDocuments,
     baselineId,
     alternativeId,
@@ -306,5 +404,8 @@ export function useWorkspace() {
     reopen,
     addCustomMaterial,
     alignAlternative,
+    saveRule,
+    setRuleActive,
+    ruleUsageCount,
   }
 }

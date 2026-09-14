@@ -32,7 +32,7 @@ try {
   assert.equal(await intensity.innerText(), '90.1')
 
   if (workflow === 'compose') {
-    await button('04 材料参数').click()
+    await button('05 材料参数').click()
     await button('＋ 自定义材料').click()
     await page.getByLabel('材料名称', { exact: true }).fill('试算保温物性')
     await page.getByLabel('参数来源', { exact: true }).fill('冒烟流程教学参数')

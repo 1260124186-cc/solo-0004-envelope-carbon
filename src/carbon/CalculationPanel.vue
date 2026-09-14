@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { Calculation } from './types'
 import type { Finding } from '../assemblies/types'
+import type { Compliance } from '../compliance/types'
 import { number } from '../shared/format'
 import LayerContribution from './LayerContribution.vue'
 import MethodNote from './MethodNote.vue'
 defineProps<{
   result: Calculation | null
+  compliance: Compliance | null
   findings: Finding[]
   area: number
   years: number
-  carbonLimit: number
-  thermalLimit: number
 }>()
 </script>
 
@@ -43,9 +43,35 @@ defineProps<{
           <dd>{{ number(result.whole) }} <small>千克当量</small></dd>
         </div>
       </dl>
-      <div :class="['target-line', { exceeded: !result.carbonPass }]">
-        <span>{{ result.carbonPass ? '✓ 达到碳强度目标' : '↗ 超出碳强度目标' }}</span>
-        <span>目标 ≤ {{ number(carbonLimit) }}</span>
+      <div
+        v-if="compliance"
+        class="compliance-block"
+      >
+        <div :class="['compliance-summary', { exceeded: !compliance.pass }]">
+          <span>{{ compliance.pass ? '✓ 达到达标条件' : '↗ 未达到达标条件' }}</span>
+          <span>{{
+            compliance.mode === 'rule' ? compliance.ruleName : '构造自带目标 · 碳强度与传热系数'
+          }}</span>
+        </div>
+        <p
+          v-if="compliance.mode === 'rule' && !compliance.ruleActive"
+          class="compliance-inactive"
+        >
+          该规则已停用，以下仅为参考判定；定稿需改选启用中的规则或切回构造自带目标。
+        </p>
+        <ul class="condition-list">
+          <li
+            v-for="condition in compliance.conditions"
+            :key="condition.metric"
+            :class="{ exceeded: !condition.pass }"
+          >
+            <span>{{ condition.pass ? '✓' : '↗' }} {{ condition.label }}</span>
+            <span>
+              {{ number(condition.actual) }} / ≤ {{ number(condition.limit) }}
+              <small>{{ condition.unit }}</small>
+            </span>
+          </li>
+        </ul>
       </div>
       <div class="thermal-result">
         <div>
@@ -53,13 +79,8 @@ defineProps<{
           ><strong>{{ number(result.transmittance) }}</strong
           ><small>瓦 /（平方米 · 开尔文）</small>
         </div>
-        <span :class="['thermal-status', { exceeded: !result.thermalPass }]">{{
-          result.thermalPass ? '达到目标' : '超出目标'
-        }}</span>
       </div>
-      <p class="thermal-help">
-        上限 {{ number(thermalLimit) }} · 构造总厚 {{ number(result.thickness) }} 毫米
-      </p>
+      <p class="thermal-help">构造总厚 {{ number(result.thickness) }} 毫米</p>
       <LayerContribution :layers="result.layers" />
     </template>
     <div
@@ -155,18 +176,56 @@ defineProps<{
   color: var(--muted);
   font-size: 10px;
 }
-.target-line {
+.compliance-block {
   margin: 18px 24px 0;
+}
+.compliance-summary {
   padding: 10px;
   background: var(--green-pale);
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   font-size: 10px;
   color: var(--green);
+}
+.compliance-summary > span:last-child {
+  text-align: right;
 }
 .exceeded {
   color: #995128 !important;
   background: #fbf0db !important;
+}
+.compliance-inactive {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 10px;
+  line-height: 1.7;
+  color: #865629;
+  background: #fcf3de;
+}
+.condition-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.condition-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--green);
+  background: var(--green-pale);
+  padding: 7px 9px;
+}
+.condition-list li.exceeded {
+  color: #995128;
+  background: #fbf0db;
+}
+.condition-list small {
+  color: var(--muted);
+  margin-left: 4px;
 }
 .thermal-result {
   display: flex;
@@ -183,12 +242,6 @@ defineProps<{
 .thermal-result small {
   font-size: 10px;
   color: var(--muted);
-}
-.thermal-status {
-  font-size: 10px;
-  background: var(--green-pale);
-  color: var(--green);
-  padding: 5px 8px;
 }
 .thermal-help {
   margin: 12px 24px 20px;

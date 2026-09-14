@@ -21,6 +21,7 @@ export function createAssembly(name = '未命名构造'): Assembly {
     years: 60,
     carbonLimit: 150,
     thermalLimit: 0.6,
+    ruleId: '',
     note: '',
     layers: [],
     state: 'editing',

@@ -2,6 +2,7 @@
 import type { Assembly, Layer, Finding } from './types'
 import type { Material } from '../materials/types'
 import type { Calculation } from '../carbon/types'
+import type { Compliance, ComplianceRule } from '../compliance/types'
 import AssemblyFields from './AssemblyFields.vue'
 import LayerEditor from './LayerEditor.vue'
 import CalculationPanel from '../carbon/CalculationPanel.vue'
@@ -9,7 +10,9 @@ import { stateLabels } from './types'
 defineProps<{
   assembly: Assembly
   materials: Material[]
+  rules: ComplianceRule[]
   result: Calculation | null
+  compliance: Compliance | null
   findings: Finding[]
   busy: boolean
   dirty: boolean
@@ -39,6 +42,7 @@ const emit = defineEmits<{
       <p class="section-intro">定义构造、校核物性，在材料选择中看见减碳的可能。</p>
       <AssemblyFields
         :assembly="assembly"
+        :rules="rules"
         :disabled="busy || assembly.state === 'finalized'"
         @update="emit('update', $event)"
       />
@@ -85,11 +89,10 @@ const emit = defineEmits<{
     </section>
     <CalculationPanel
       :result="result"
+      :compliance="compliance"
       :findings="findings"
       :area="assembly.area"
       :years="assembly.years"
-      :carbon-limit="assembly.carbonLimit"
-      :thermal-limit="assembly.thermalLimit"
     />
   </div>
 </template>

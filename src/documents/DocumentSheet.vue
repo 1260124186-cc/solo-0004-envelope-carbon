@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { CarbonDocument } from './types'
 import { number, date } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
-defineProps<{ document: CarbonDocument }>()
+import { documentCompliance } from './basis'
+const props = defineProps<{ document: CarbonDocument }>()
+const compliance = computed(() => documentCompliance(props.document))
 </script>
 
 <template>
@@ -23,6 +26,32 @@ defineProps<{ document: CarbonDocument }>()
       {{ document.assembly.years }} 年
     </p>
     <p class="document-meta">{{ date(document.createdAt) }} · {{ document.result.method }}</p>
+    <div :class="['document-compliance', { exceeded: !compliance.pass }]">
+      <div class="compliance-title">
+        <strong>{{ compliance.pass ? '✓ 本版达到达标条件' : '↗ 本版未达到达标条件' }}</strong>
+        <span>
+          判定口径：{{
+            compliance.mode === 'rule' ? compliance.ruleName : '构造自带目标（碳强度与传热系数）'
+          }}
+          <em v-if="compliance.mode === 'rule' && !compliance.ruleActive">
+            （该规则现已停用，仍按定稿时口径显示）
+          </em>
+        </span>
+      </div>
+      <ul>
+        <li
+          v-for="condition in compliance.conditions"
+          :key="condition.metric"
+          :class="{ exceeded: !condition.pass }"
+        >
+          <span>{{ condition.pass ? '✓' : '↗' }} {{ condition.label }}</span>
+          <span
+            >实际 {{ number(condition.actual) }} / 上限 {{ number(condition.limit) }}
+            {{ condition.unit }}</span
+          >
+        </li>
+      </ul>
+    </div>
     <div class="document-numbers">
       <div>
         <span>生命周期强度</span
@@ -118,6 +147,52 @@ defineProps<{ document: CarbonDocument }>()
   font-size: 11px;
   color: var(--muted);
   line-height: 1.8;
+}
+.document-compliance {
+  margin: 18px 0 0;
+  border: 1px solid #b9cdbb;
+  background: var(--green-pale);
+  color: var(--green);
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-size: 12px;
+}
+.document-compliance.exceeded {
+  border-color: #ddbd94;
+  background: #fbf0db;
+  color: #995128;
+}
+.compliance-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.compliance-title span {
+  font-size: 11px;
+  opacity: 0.85;
+}
+.compliance-title em {
+  font-style: normal;
+}
+.document-compliance ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.document-compliance li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  background: rgb(255 254 249 / 0.6);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+.document-compliance li.exceeded {
+  background: #fbe9cf;
 }
 .document-numbers {
   display: grid;

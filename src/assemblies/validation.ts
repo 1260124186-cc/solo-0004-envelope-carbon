@@ -26,6 +26,11 @@ export function validateAssembly(assembly: Assembly, materials: Material[]): Fin
   if (!inRange(assembly.thermalLimit, 0.01, 10)) {
     add('thermalLimit', '传热系数上限需在 0.01 至 10 之间。')
   }
+  // ruleId 只做类型防御；引用的规则是否存在由存储解码与工作区显式核对，
+  // 物理计算（calculate）不依赖规则集合。
+  if (typeof assembly.ruleId !== 'string') {
+    add('ruleId', '达标规则选择无效。')
+  }
   if (assembly.note.length > 1000) add('note', '设计说明最多 1,000 个字符。')
   if (!assembly.layers.length) add('layers', '请至少添加一个构造层。')
   if (assembly.layers.length > 20) add('layers', '单个构造最多包含 20 层。')

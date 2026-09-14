@@ -1,5 +1,6 @@
 import type { Assembly } from '../assemblies/types'
 import type { Material } from '../materials/types'
+import type { ComplianceRule } from '../compliance/types'
 import type { CarbonDocument } from '../documents/types'
 
 export interface EnvelopeData {
@@ -8,6 +9,7 @@ export interface EnvelopeData {
   assemblies: Assembly[]
   materials: Material[]
   documents: CarbonDocument[]
+  rules: ComplianceRule[]
 }
 
 export const persistenceKey = 'solo-0004-envelope-carbon:design:v1'

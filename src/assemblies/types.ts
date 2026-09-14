@@ -17,6 +17,8 @@ export interface Assembly {
   years: number
   carbonLimit: number
   thermalLimit: number
+  /** 所选达标规则标识；为空时按 carbonLimit、thermalLimit 原字段判定。 */
+  ruleId: string
   note: string
   layers: Layer[]
   state: AssemblyState

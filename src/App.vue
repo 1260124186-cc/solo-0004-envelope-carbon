@@ -6,6 +6,7 @@ import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
+import RuleWorkspace from './compliance/RuleWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
 const {
   data,
@@ -19,6 +20,7 @@ const {
   dirty,
   findings,
   result,
+  compliance,
   selectedDocuments,
   baselineId,
   alternativeId,
@@ -36,6 +38,9 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  saveRule,
+  setRuleActive,
+  ruleUsageCount,
 } = useWorkspace()
 </script>
 
@@ -81,7 +86,9 @@ const {
         v-if="tab === 'design'"
         :assembly="draft"
         :materials="data.materials"
+        :rules="data.rules"
         :result="result"
+        :compliance="compliance"
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
@@ -115,6 +122,14 @@ const {
         @finalize="finalize"
         @reopen="reopen"
         @design="tab = 'design'"
+      />
+      <RuleWorkspace
+        v-else-if="tab === 'rules'"
+        :rules="data.rules"
+        :busy="busy"
+        :usage-count="ruleUsageCount"
+        :submit-rule="saveRule"
+        :set-active="setRuleActive"
       />
       <MaterialWorkspace
         v-else

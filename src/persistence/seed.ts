@@ -1,5 +1,6 @@
 import type { EnvelopeData } from './types'
 import { referenceMaterials } from '../materials/catalogue'
+import { seedRules } from '../compliance/seed'
 import { createAssembly } from '../assemblies/factory'
 import { clone } from '../shared/identity'
 
@@ -15,11 +16,14 @@ export function seedData(): EnvelopeData {
     { id: 'ply-body', materialId: 'env-aerated', thickness: 200, loss: 3, lifespan: 60 },
     { id: 'ply-interior', materialId: 'env-gypsum', thickness: 12.5, loss: 3, lifespan: 25 },
   ]
+  // 初始构造不选择规则，继续按自带碳强度目标与传热系数上限判定，保持原口径。
+  assembly.ruleId = ''
   return {
     schema: 1,
     stamp: 'initial',
     assemblies: [assembly],
     materials: clone(referenceMaterials),
     documents: [],
+    rules: seedRules(),
   }
 }

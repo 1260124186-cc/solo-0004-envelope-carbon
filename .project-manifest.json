@@ -19,6 +19,11 @@
       "responsibility": "碳排放及热阻计算"
     },
     {
+      "id": "compliance",
+      "path": "src/compliance",
+      "responsibility": "可命名可复用的组合达标规则"
+    },
+    {
       "id": "persistence",
       "path": "src/persistence",
       "responsibility": "浏览器持久化与修订冲突"
@@ -102,6 +107,7 @@
       "module_ids": [
         "workspace",
         "carbon",
+        "compliance",
         "documents",
         "persistence"
       ]
