@@ -29,6 +29,13 @@ export interface Finding {
   text: string
 }
 
+export type LayerBatchPatch = Partial<Pick<Layer, 'loss' | 'lifespan'>>
+
+export interface BatchTarget {
+  layer: Layer
+  index: number
+}
+
 export const surfaceLabels: Record<Surface, string> = {
   wall: '外墙',
   roof: '屋面',

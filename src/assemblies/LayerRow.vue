@@ -10,11 +10,13 @@ const props = defineProps<{
   total: number
   materials: Material[]
   disabled: boolean
+  selected: boolean
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Layer>]
   remove: []
   move: [direction: -1 | 1]
+  toggleSelect: []
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
 function changeMaterial(event: Event) {
@@ -35,6 +37,13 @@ function numeric(event: Event): number {
     :aria-label="`第 ${index + 1} 层`"
   >
     <legend class="sr-only">第 {{ index + 1 }} 层</legend>
+    <input
+      class="layer-check"
+      type="checkbox"
+      :checked="selected"
+      :aria-label="`选择第 ${index + 1} 层`"
+      @change="emit('toggleSelect')"
+    />
     <div
       class="layer-ordinal"
       :style="{ borderColor: material ? kindColors[material.kind] : '#aaa' }"
@@ -156,6 +165,13 @@ function numeric(event: Event): number {
   font-size: 14px;
   color: var(--muted);
   padding-top: 8px;
+}
+.layer-check {
+  width: auto;
+  padding: 0;
+  margin: 12px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--green);
 }
 .layer-main {
   flex: 1;

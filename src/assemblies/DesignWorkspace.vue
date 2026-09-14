@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Assembly, Layer, Finding } from './types'
+import type { Assembly, Layer, LayerBatchPatch, Finding } from './types'
 import type { Material } from '../materials/types'
 import type { Calculation } from '../carbon/types'
 import AssemblyFields from './AssemblyFields.vue'
@@ -17,6 +17,7 @@ defineProps<{
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
   updateLayer: [id: string, patch: Partial<Layer>]
+  updateLayers: [ids: string[], patch: LayerBatchPatch]
   removeLayer: [id: string]
   moveLayer: [id: string, direction: -1 | 1]
   addLayer: [material: Material]
@@ -50,6 +51,7 @@ const emit = defineEmits<{
         @remove="emit('removeLayer', $event)"
         @move="(id, direction) => emit('moveLayer', id, direction)"
         @add="emit('addLayer', $event)"
+        @batch-update="(ids, patch) => emit('updateLayers', ids, patch)"
       />
       <div class="design-footer">
         <span class="save-indicator">{{

@@ -29,6 +29,7 @@ const {
   update,
   addMaterial,
   updateLayer,
+  updateLayers,
   removeLayer,
   move,
   save,
@@ -87,6 +88,7 @@ const {
         :dirty="dirty"
         @update="update"
         @update-layer="updateLayer"
+        @update-layers="updateLayers"
         @remove-layer="removeLayer"
         @move-layer="move"
         @add-layer="addMaterial"

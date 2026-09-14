@@ -1,9 +1,9 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import type { Assembly, Layer } from '../assemblies/types'
+import type { Assembly, Layer, LayerBatchPatch } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
-import { requireEditable, validateAssembly } from '../assemblies/validation'
+import { inRange, requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
@@ -125,6 +125,36 @@ export function useWorkspace() {
     update({
       layers: draft.value.layers.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     })
+  }
+
+  function updateLayers(ids: string[], patch: LayerBatchPatch) {
+    if (!draft.value || !editable.value || busy.value) return
+    const targets = new Set(ids)
+    const count = draft.value.layers.filter((layer) => targets.has(layer.id)).length
+    if (!count || (patch.loss === undefined && patch.lifespan === undefined)) return
+    if (patch.loss !== undefined && !inRange(patch.loss, 0, 50)) {
+      error.value = '批量修改未应用：损耗率需在 0 至 50% 之间。'
+      return
+    }
+    if (
+      patch.lifespan !== undefined &&
+      (!inRange(patch.lifespan, 1, 150) || !Number.isInteger(patch.lifespan))
+    ) {
+      error.value = '批量修改未应用：替换寿命需为 1 至 150 的整数。'
+      return
+    }
+    update({
+      layers: draft.value.layers.map((layer) =>
+        targets.has(layer.id) ? { ...layer, ...patch } : layer,
+      ),
+    })
+    const fields = [
+      patch.loss !== undefined ? '损耗率' : '',
+      patch.lifespan !== undefined ? '替换寿命' : '',
+    ]
+      .filter(Boolean)
+      .join('与')
+    notice.value = `已批量修改 ${count} 层的${fields}，尚未保存。`
   }
 
   function removeLayer(id: string) {
@@ -299,6 +329,7 @@ export function useWorkspace() {
     update,
     addMaterial,
     updateLayer,
+    updateLayers,
     removeLayer,
     move,
     save,
