@@ -4,6 +4,7 @@ import type { Layer } from './types'
 import type { Material } from '../materials/types'
 import { kindColors, kindLabels } from '../materials/types'
 import { number } from '../shared/format'
+import MaterialPicker from '../materials/MaterialPicker.vue'
 const props = defineProps<{
   layer: Layer
   index: number
@@ -17,11 +18,12 @@ const emit = defineEmits<{
   move: [direction: -1 | 1]
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
-function changeMaterial(event: Event) {
-  const selected = props.materials.find(
-    (item) => item.id === (event.target as HTMLSelectElement).value,
-  )
-  if (selected) emit('update', { materialId: selected.id, lifespan: selected.lifespan })
+function replaceMaterial(payload: { material: Material; adoptLifespan: boolean }) {
+  // 替换语义：仅更换材料物性；厚度与施工损耗保留本层原值。
+  // 寿命是否采用新材料参考寿命，由用户在选择器中显式决定。
+  const patch: Partial<Layer> = { materialId: payload.material.id }
+  if (payload.adoptLifespan) patch.lifespan = payload.material.lifespan
+  emit('update', patch)
 }
 function numeric(event: Event): number {
   return (event.target as HTMLInputElement).valueAsNumber
@@ -43,27 +45,39 @@ function numeric(event: Event): number {
     </div>
     <div class="layer-main">
       <div class="layer-title-row">
-        <label class="material-select"
-          >材料
-          <select
-            :value="layer.materialId"
-            :aria-label="`第 ${index + 1} 层材料`"
-            @change="changeMaterial"
+        <div class="material-name-cell">
+          <span
+            class="material-name"
+            :title="material ? material.name : '材料缺失'"
+            >{{ material ? material.name : '材料已不在目录中' }}</span
           >
-            <option
-              v-for="item in materials"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option>
-          </select>
-        </label>
-        <span
-          v-if="material"
-          class="material-kind"
-          >{{ kindLabels[material.kind] }}</span
-        >
+          <span
+            v-if="material"
+            class="material-kind"
+            >{{ kindLabels[material.kind] }}</span
+          >
+          <MaterialPicker
+            :materials="materials"
+            :disabled="disabled"
+            mode="replace"
+            :current-material-id="layer.materialId"
+            :current-lifespan="layer.lifespan"
+            @replace="replaceMaterial"
+          >
+            <template #trigger="{ open }">
+              <button
+                type="button"
+                class="button small replace-button"
+                :disabled="disabled"
+                aria-haspopup="dialog"
+                :aria-label="`更换第 ${index + 1} 层材料`"
+                @click="open()"
+              >
+                更换材料
+              </button>
+            </template>
+          </MaterialPicker>
+        </div>
         <div class="layer-actions">
           <button
             class="icon-button"
@@ -131,8 +145,11 @@ function numeric(event: Event): number {
         v-if="material"
         class="layer-reference"
       >
-        密度 {{ number(material.density) }} 千克/立方米 <span>·</span> 碳因子
+        密度 {{ number(material.density) }} 千克/立方米 <span>·</span> 导热系数
+        {{ number(material.conductivity) }} 瓦/米·开尔文 <span>·</span> 碳因子
         {{ number(material.factor) }} 千克当量/千克
+        <span>·</span>
+        {{ material.custom ? '自定义物性' : '教学示例' }}
       </p>
     </div>
   </fieldset>
@@ -167,9 +184,23 @@ function numeric(event: Event): number {
   gap: 12px;
   margin-bottom: 12px;
 }
-.material-select {
+.material-name-cell {
   flex: 1;
-  max-width: 260px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.material-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.replace-button {
+  flex-shrink: 0;
 }
 .material-kind {
   font-size: 10px;
@@ -212,6 +243,9 @@ function numeric(event: Event): number {
   }
   .material-kind {
     display: none;
+  }
+  .material-name {
+    max-width: 130px;
   }
   .layer-inputs {
     grid-template-columns: 1fr;

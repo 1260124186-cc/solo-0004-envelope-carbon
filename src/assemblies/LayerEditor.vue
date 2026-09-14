@@ -52,6 +52,7 @@ const emit = defineEmits<{
     <MaterialPicker
       :materials="materials"
       :disabled="disabled || layers.length >= 20"
+      mode="add"
       @add="emit('add', $event)"
     />
   </section>
