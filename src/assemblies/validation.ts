@@ -1,6 +1,19 @@
 import type { Assembly, Finding } from './types'
 import type { Material } from '../materials/types'
 
+export const revisionNoteMax = 200
+
+/** 修订备注为可选项：去除首尾空白，超长时拒绝而不是静默截断。 */
+export function cleanRevisionNote(note: string): string {
+  return note.trim().slice(0, revisionNoteMax)
+}
+
+export function checkRevisionNote(note: string): string {
+  const trimmed = note.trim()
+  if (trimmed.length > revisionNoteMax) return `修订备注最多 ${revisionNoteMax} 个字符。`
+  return ''
+}
+
 export function inRange(value: unknown, min: number, max: number): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 }

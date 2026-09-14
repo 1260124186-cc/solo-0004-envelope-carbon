@@ -5,14 +5,18 @@ import type { Calculation } from '../carbon/types'
 import AssemblyFields from './AssemblyFields.vue'
 import LayerEditor from './LayerEditor.vue'
 import CalculationPanel from '../carbon/CalculationPanel.vue'
+import { revisionNoteMax } from './validation'
 import { stateLabels } from './types'
-defineProps<{
+const props = defineProps<{
   assembly: Assembly
   materials: Material[]
   result: Calculation | null
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  saveNote: string
+  finalizeNote: string
+  reopenNote: string
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
@@ -23,7 +27,16 @@ const emit = defineEmits<{
   save: []
   reopen: []
   finalize: []
+  'update:saveNote': [value: string]
+  'update:finalizeNote': [value: string]
+  'update:reopenNote': [value: string]
 }>()
+function noteCount(model: string): string {
+  return `${model.trim().length}/${revisionNoteMax}`
+}
+function inputValue(event: Event): string {
+  return (event.target as HTMLInputElement).value
+}
 </script>
 
 <template>
@@ -51,6 +64,44 @@ const emit = defineEmits<{
         @move="(id, direction) => emit('moveLayer', id, direction)"
         @add="emit('addLayer', $event)"
       />
+      <div class="revision-note">
+        <label
+          v-if="assembly.state === 'editing'"
+          class="revision-note-field"
+        >
+          <span class="revision-note-label">
+            {{ dirty ? '本次保存的修订备注（可选）' : '本次定稿的修订备注（可选）' }}
+            <small>{{ noteCount(dirty ? saveNote : finalizeNote) }}</small>
+          </span>
+          <input
+            :value="dirty ? saveNote : finalizeNote"
+            :maxlength="revisionNoteMax"
+            :disabled="busy"
+            placeholder="例如：按审图意见加厚外保温 20 毫米"
+            @input="
+              dirty
+                ? emit('update:saveNote', inputValue($event))
+                : emit('update:finalizeNote', inputValue($event))
+            "
+          />
+        </label>
+        <label
+          v-else
+          class="revision-note-field"
+        >
+          <span class="revision-note-label">
+            重新开启编辑的修订备注（可选）
+            <small>{{ noteCount(reopenNote) }}</small>
+          </span>
+          <input
+            :value="reopenNote"
+            :maxlength="revisionNoteMax"
+            :disabled="busy"
+            placeholder="说明为什么要在本版之后继续修改"
+            @input="emit('update:reopenNote', inputValue($event))"
+          />
+        </label>
+      </div>
       <div class="design-footer">
         <span class="save-indicator">{{
           busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
@@ -126,6 +177,26 @@ const emit = defineEmits<{
 .save-indicator {
   font-size: 11px;
   color: var(--muted);
+}
+.revision-note {
+  margin-top: 20px;
+}
+.revision-note-field {
+  display: grid;
+  gap: 7px;
+  max-width: 560px;
+}
+.revision-note-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  color: #727969;
+  font-size: 11px;
+}
+.revision-note-label small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 @media (max-width: 1000px) {
   .design-grid {

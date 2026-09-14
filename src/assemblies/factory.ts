@@ -25,6 +25,7 @@ export function createAssembly(name = '未命名构造'): Assembly {
     layers: [],
     state: 'editing',
     revision: 0,
+    revisions: [],
     updatedAt: now(),
   }
 }
@@ -36,6 +37,7 @@ export function duplicateAssembly(original: Assembly): Assembly {
   copy.layers = copy.layers.map((layer) => ({ ...layer, id: newId('ply') }))
   copy.state = 'editing'
   copy.revision = 0
+  copy.revisions = []
   copy.updatedAt = now()
   return copy
 }

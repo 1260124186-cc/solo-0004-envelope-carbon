@@ -2,6 +2,8 @@
 import { computed, shallowRef, watch } from 'vue'
 import type { Assembly } from '../assemblies/types'
 import type { CarbonDocument } from './types'
+import { documentSnippet } from './types'
+import { revisionNoteMax } from '../assemblies/validation'
 import { date } from '../shared/format'
 import DocumentSheet from './DocumentSheet.vue'
 const props = defineProps<{
@@ -10,8 +12,16 @@ const props = defineProps<{
   dirty: boolean
   busy: boolean
   valid: boolean
+  finalizeNote: string
+  reopenNote: string
 }>()
-const emit = defineEmits<{ finalize: []; reopen: []; design: [] }>()
+const emit = defineEmits<{
+  finalize: []
+  reopen: []
+  design: []
+  'update:finalizeNote': [value: string]
+  'update:reopenNote': [value: string]
+}>()
 const selectedId = shallowRef('')
 watch(
   () => props.documents,
@@ -24,6 +34,11 @@ watch(
 const selected = computed(() =>
   props.documents.find((document) => document.id === selectedId.value),
 )
+function optionLabel(document: CarbonDocument): string {
+  const snippet = documentSnippet(document)
+  const head = `修订 ${document.assembly.revision} · ${date(document.createdAt)}`
+  return snippet ? `${head} · ${snippet}` : `${head} · 未填写备注`
+}
 </script>
 
 <template>
@@ -51,6 +66,40 @@ const selected = computed(() =>
       </button>
     </div>
     <p class="section-intro">定稿将冻结构造与全部材料物性，计算书始终按生成时的输入显示。</p>
+    <div class="revision-note">
+      <label
+        v-if="assembly.state === 'editing'"
+        class="revision-note-field"
+      >
+        <span class="revision-note-label">
+          本次定稿的修订备注（可选）
+          <small>{{ finalizeNote.trim().length }}/{{ revisionNoteMax }}</small>
+        </span>
+        <input
+          :value="finalizeNote"
+          :maxlength="revisionNoteMax"
+          :disabled="busy"
+          placeholder="备注会随本份计算书冻结，后续编辑不能改写"
+          @input="emit('update:finalizeNote', ($event.target as HTMLInputElement).value)"
+        />
+      </label>
+      <label
+        v-else
+        class="revision-note-field"
+      >
+        <span class="revision-note-label">
+          重新开启编辑的修订备注（可选）
+          <small>{{ reopenNote.trim().length }}/{{ revisionNoteMax }}</small>
+        </span>
+        <input
+          :value="reopenNote"
+          :maxlength="revisionNoteMax"
+          :disabled="busy"
+          placeholder="说明为什么要在本版之后继续修改"
+          @input="emit('update:reopenNote', ($event.target as HTMLInputElement).value)"
+        />
+      </label>
+    </div>
     <p
       v-if="dirty"
       class="inline-warning"
@@ -79,7 +128,7 @@ const selected = computed(() =>
             :key="document.id"
             :value="document.id"
           >
-            修订 {{ document.assembly.revision }} · {{ date(document.createdAt) }}
+            {{ optionLabel(document) }}
           </option>
         </select>
       </label>
@@ -97,7 +146,27 @@ const selected = computed(() =>
   margin: 0 auto;
 }
 .document-version {
-  max-width: 420px;
+  max-width: 640px;
   margin: 24px 0;
+}
+.revision-note {
+  margin: 18px 0;
+}
+.revision-note-field {
+  display: grid;
+  gap: 7px;
+  max-width: 560px;
+}
+.revision-note-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  color: #727969;
+  font-size: 11px;
+}
+.revision-note-label small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>

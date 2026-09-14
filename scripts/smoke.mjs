@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'legacy'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 legacy 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -81,10 +81,14 @@ try {
   }
 
   if (workflow === 'document') {
+    await page.getByLabel('本次定稿的修订备注（可选）').fill('供审图会评议的基线定稿')
     await button('生成定稿').click()
     await text('计算书已定稿，构造现为只读。').waitFor()
     const frozen = page.locator('[data-check="frozen-intensity"]')
     assert.equal(await frozen.innerText(), '90.1')
+    await text('定稿备注：供审图会评议的基线定稿').waitFor()
+    const history = page.locator('.document-version select')
+    assert.match(await history.locator('option').first().innerText(), /供审图会评议的基线定稿/)
     const pendingDownload = page.waitForEvent('download')
     await button('下载计算书').click()
     const download = await pendingDownload
@@ -93,19 +97,68 @@ try {
     let output = ''
     for await (const chunk of stream) output += chunk.toString('utf8')
     assert.ok(output.includes('生命周期强度：90.1'))
+    assert.ok(output.includes('定稿备注：供审图会评议的基线定稿'))
     await button('01 构造编辑').click()
     assert.equal(await page.getByLabel('构造名称', { exact: true }).isEnabled(), false)
+    await page.getByLabel('重新开启编辑的修订备注（可选）').fill('按节能复审意见调整保温层')
     await button('重新开启编辑').click()
     await text('已重新开启编辑，历史计算书保持不变。').waitFor()
     await page.getByLabel('第 2 层厚度', { exact: true }).fill('200')
+    await page.getByLabel('本次保存的修订备注（可选）').fill('加厚岩棉至 200 毫米')
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     assert.notEqual(await intensity.innerText(), '90.1')
-    await button('03 计算书').click()
+    await page.getByLabel('本次定稿的修订备注（可选）').fill('复审后第二版定稿')
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    // 最新计算书展示第二版备注，旧计算书仍保留第一版备注，不被后续编辑改写。
+    await text('定稿备注：复审后第二版定稿').waitFor()
+    await history.selectOption({ index: 1 })
+    await text('定稿备注：供审图会评议的基线定稿').waitFor()
     assert.equal(await frozen.innerText(), '90.1')
     await page.reload()
     await button('03 计算书').click()
+    const reloadedHistory = page.locator('.document-version select')
+    await reloadedHistory.selectOption({ index: 1 })
+    await text('定稿备注：供审图会评议的基线定稿').waitFor()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+
+  if (workflow === 'legacy') {
+    // 先按新格式生成一份定稿，再模拟旧版本写出的数据：去掉 revisions 与文档备注字段。
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    await page.evaluate((key) => {
+      const raw = JSON.parse(localStorage.getItem(key))
+      const strip = (assembly) => {
+        delete assembly.revisions
+        return assembly
+      }
+      raw.assemblies.forEach(strip)
+      raw.documents.forEach((document) => {
+        delete document.note
+        strip(document.assembly)
+      })
+      localStorage.setItem(key, JSON.stringify(raw))
+    }, 'solo-0004-envelope-carbon:design:v1')
+    await page.reload()
+    await intensity.waitFor()
+    await button('03 计算书').click()
+    const history = page.locator('.document-version select')
+    await history.waitFor()
+    assert.match(await history.locator('option').first().innerText(), /未填写备注/)
+    await text('定稿备注：未填写备注').waitFor()
+    const pendingDownload = page.waitForEvent('download')
+    await button('下载计算书').click()
+    const download = await pendingDownload
+    const stream = await download.createReadStream()
+    let output = ''
+    for await (const chunk of stream) output += chunk.toString('utf8')
+    assert.ok(output.includes('历史记录创建时未填写修订备注。'))
+    // 归一化后仍可继续流转：重开与保存必须成功。
+    await button('01 构造编辑').click()
+    await button('重新开启编辑').click()
+    await text('已重新开启编辑，历史计算书保持不变。').waitFor()
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

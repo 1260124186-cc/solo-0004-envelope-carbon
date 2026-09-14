@@ -1,12 +1,18 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import type { Assembly, Layer } from '../assemblies/types'
+import type { Assembly, Layer, RevisionEntry } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
-import { requireEditable, validateAssembly } from '../assemblies/validation'
+import {
+  checkRevisionNote,
+  cleanRevisionNote,
+  requireEditable,
+  validateAssembly,
+} from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { appendRevision } from '../documents/types'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
@@ -24,6 +30,10 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  // 三处状态流转的待写备注，独立于构造草稿，避免影响未保存判断。
+  const saveNote = ref('')
+  const finalizeNote = ref('')
+  const reopenNote = ref('')
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -51,6 +61,12 @@ export function useWorkspace() {
     error.value = ''
   }
 
+  function clearPendingNotes() {
+    saveNote.value = ''
+    finalizeNote.value = ''
+    reopenNote.value = ''
+  }
+
   function mayDiscard(): boolean {
     return !dirty.value || window.confirm('当前构造有未保存的修改，是否放弃这些修改？')
   }
@@ -68,6 +84,7 @@ export function useWorkspace() {
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
       externalChange.value = false
+      clearPendingNotes()
       clearFeedback()
       if (!initial) notice.value = '已重新加载保存版本。'
     } catch (cause) {
@@ -80,6 +97,7 @@ export function useWorkspace() {
     const selected = data.value?.assemblies.find((item) => item.id === id)
     if (!selected) return
     draft.value = clone(selected)
+    clearPendingNotes()
     clearFeedback()
     tab.value = 'design'
   }
@@ -87,6 +105,7 @@ export function useWorkspace() {
   function create() {
     if (busy.value || !mayDiscard()) return
     draft.value = createAssembly()
+    clearPendingNotes()
     clearFeedback()
     tab.value = 'design'
   }
@@ -160,10 +179,21 @@ export function useWorkspace() {
       error.value = findings.value[0].text
       return
     }
+    const noteError = checkRevisionNote(saveNote.value)
+    if (noteError) {
+      error.value = noteError
+      return
+    }
     const candidate = clone(draft.value)
     candidate.name = candidate.name.trim()
     candidate.revision += 1
-    candidate.updatedAt = now()
+    candidate.revisions = appendRevision(candidate.revisions, {
+      revision: candidate.revision,
+      kind: 'save',
+      note: cleanRevisionNote(saveNote.value),
+      at: now(),
+    })
+    candidate.updatedAt = candidate.revisions[candidate.revisions.length - 1].at
     const saved = await act((next) => {
       const index = next.assemblies.findIndex((item) => item.id === candidate.id)
       if (index >= 0) {
@@ -174,7 +204,10 @@ export function useWorkspace() {
         next.assemblies.push(candidate)
       }
     }, '构造已保存。')
-    if (saved) draft.value = clone(candidate)
+    if (saved) {
+      draft.value = clone(candidate)
+      saveNote.value = ''
+    }
   }
 
   async function finalize() {
@@ -182,35 +215,56 @@ export function useWorkspace() {
       error.value = '请先保存当前构造，再生成定稿。'
       return
     }
+    const noteError = checkRevisionNote(finalizeNote.value)
+    if (noteError) {
+      error.value = noteError
+      return
+    }
+    const note = cleanRevisionNote(finalizeNote.value)
     const id = draft.value.id
     const saved = await act((next) => {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
       if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
-      const document = createDocument(assembly, next.materials)
+      const document = createDocument(assembly, next.materials, note)
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
     }, '计算书已定稿，构造现为只读。')
     if (saved) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      finalizeNote.value = ''
       tab.value = 'documents'
     }
   }
 
   async function reopen() {
     if (!draft.value) return
+    const noteError = checkRevisionNote(reopenNote.value)
+    if (noteError) {
+      error.value = noteError
+      return
+    }
     const id = draft.value.id
+    const note = cleanRevisionNote(reopenNote.value)
     const saved = await act((next) => {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly || assembly.state !== 'finalized')
         throw new Error('只有已定稿构造可以重新编辑。')
+      const entry: RevisionEntry = {
+        revision: assembly.revision + 1,
+        kind: 'reopen',
+        note,
+        at: now(),
+      }
+      assembly.revisions = appendRevision(assembly.revisions, entry)
       assembly.state = 'editing'
-      assembly.revision += 1
-      assembly.updatedAt = now()
+      assembly.revision = entry.revision
+      assembly.updatedAt = entry.at
     }, '已重新开启编辑，历史计算书保持不变。')
     if (saved) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
+      reopenNote.value = ''
       tab.value = 'design'
     }
   }
@@ -242,11 +296,18 @@ export function useWorkspace() {
       const b = next.assemblies.find((item) => item.id === alternativeId.value)
       if (!a || !b || a.id === b.id) throw new Error('请选择两个不同的构造。')
       requireEditable(b)
+      const entry: RevisionEntry = {
+        revision: b.revision + 1,
+        kind: 'align',
+        note: '',
+        at: now(),
+      }
       b.area = a.area
       b.years = a.years
       b.surface = a.surface
-      b.revision += 1
-      b.updatedAt = now()
+      b.revision = entry.revision
+      b.revisions = appendRevision(b.revisions, entry)
+      b.updatedAt = entry.at
     }, '替代构造已按基准统一部位、面积和年限。')
     if (saved && draft.value) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
@@ -292,6 +353,9 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    saveNote,
+    finalizeNote,
+    reopenNote,
     load,
     select,
     create,

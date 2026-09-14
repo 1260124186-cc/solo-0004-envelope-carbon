@@ -22,6 +22,9 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  saveNote,
+  finalizeNote,
+  reopenNote,
   load,
   select,
   create,
@@ -85,6 +88,9 @@ const {
         :findings="findings"
         :busy="busy"
         :dirty="dirty"
+        v-model:save-note="saveNote"
+        v-model:finalize-note="finalizeNote"
+        v-model:reopen-note="reopenNote"
         @update="update"
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
@@ -112,6 +118,8 @@ const {
         :dirty="dirty"
         :busy="busy"
         :valid="Boolean(result)"
+        v-model:finalize-note="finalizeNote"
+        v-model:reopen-note="reopenNote"
         @finalize="finalize"
         @reopen="reopen"
         @design="tab = 'design'"

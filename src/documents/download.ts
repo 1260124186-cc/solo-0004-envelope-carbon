@@ -1,15 +1,18 @@
 import type { CarbonDocument } from './types'
+import { revisionNote } from './types'
 import { number, date } from '../shared/format'
-import { surfaceLabels } from '../assemblies/types'
+import { revisionKindLabels, surfaceLabels } from '../assemblies/types'
 
 export function documentText(document: CarbonDocument): string {
   const { assembly, result } = document
+  const finalRemark = document.note || revisionNote(assembly, assembly.revision) || '未填写备注'
   const lines = [
     '围护碳研 · 围护构造计算书',
     `构造：${assembly.name}`,
     `部位：${surfaceLabels[assembly.surface]}`,
     `定稿时间：${date(document.createdAt)}`,
     `构造修订：${assembly.revision}`,
+    `定稿备注：${finalRemark}`,
     `计算方法：${result.method}`,
     `面积：${number(assembly.area)} 平方米`,
     `计算期：${assembly.years} 年`,
@@ -38,10 +41,18 @@ export function documentText(document: CarbonDocument): string {
       `导热系数 ${material.conductivity} 瓦/(米·开尔文)；碳因子 ${material.factor} 千克二氧化碳当量/千克`,
     )
   })
+  lines.push('', '四、设计说明', assembly.note || '无补充说明。', '', '五、修订记录')
+  if (assembly.revisions.length) {
+    assembly.revisions.forEach((entry) => {
+      lines.push(
+        `修订 ${entry.revision} · ${revisionKindLabels[entry.kind]} · ${date(entry.at)}`,
+        entry.note || '未填写备注',
+      )
+    })
+  } else {
+    lines.push('历史记录创建时未填写修订备注。')
+  }
   lines.push(
-    '',
-    '四、设计说明',
-    assembly.note || '无补充说明。',
     '',
     '计算范围：仅含材料初始生产与同因子替换。',
     '不含运行能耗、运输、施工能耗、终结阶段及生物源碳储存。',

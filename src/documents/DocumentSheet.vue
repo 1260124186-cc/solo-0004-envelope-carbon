@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { CarbonDocument } from './types'
+import { revisionNote } from './types'
 import { number, date } from '../shared/format'
-import { surfaceLabels } from '../assemblies/types'
+import { revisionKindLabels, surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
 defineProps<{ document: CarbonDocument }>()
 </script>
@@ -23,6 +24,11 @@ defineProps<{ document: CarbonDocument }>()
       {{ document.assembly.years }} 年
     </p>
     <p class="document-meta">{{ date(document.createdAt) }} · {{ document.result.method }}</p>
+    <p class="document-meta">
+      定稿备注：{{
+        document.note || revisionNote(document.assembly, document.assembly.revision) || '未填写备注'
+      }}
+    </p>
     <div class="document-numbers">
       <div>
         <span>生命周期强度</span
@@ -73,6 +79,14 @@ defineProps<{ document: CarbonDocument }>()
         :key="material.id"
       >
         {{ material.name }}：{{ material.source }}
+      </p>
+      <h3>修订记录</h3>
+      <p
+        v-for="entry in document.assembly.revisions"
+        :key="`${entry.revision}-${entry.kind}`"
+      >
+        修订 {{ entry.revision }} · {{ revisionKindLabels[entry.kind] }} · {{ date(entry.at)
+        }}<br />{{ entry.note || '未填写备注' }}
       </p>
       <p>本计算书冻结生成时的输入与结果，后续构造修改不会改变本版本。</p>
     </div>
