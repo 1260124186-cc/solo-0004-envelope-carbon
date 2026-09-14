@@ -61,6 +61,7 @@ try {
   }
 
   if (workflow === 'compare') {
+    const areaInput = () => page.getByLabel('构造面积（平方米）', { exact: true })
     await button('复制为替代方案').click()
     await page.getByLabel('构造名称', { exact: true }).fill('木纤维替代构造')
     await page.getByLabel('第 2 层材料', { exact: true }).selectOption({ label: '木纤维保温板' })
@@ -69,15 +70,107 @@ try {
     await button('02 方案比较').click()
     await page.locator('[data-check="carbon-delta"]').waitFor()
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+
+    // 把基准口径改为面积 200，替代构造保持 100，制造口径不一致。
     await button('01 构造编辑').click()
-    await page.getByLabel('构造面积（平方米）', { exact: true }).fill('200')
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '庭院样房 · 岩棉外墙 · 编辑中',
+    })
+    await areaInput().fill('200')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    // 再复制一个面积 300 的第三构造，供批量选择使用。
+    await button('复制为替代方案').click()
+    await page.getByLabel('构造名称', { exact: true }).fill('第三替代构造')
+    await areaInput().fill('300')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    // 木纤维替代也偏离基准（150）。
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '木纤维替代构造 · 编辑中',
+    })
+    await areaInput().fill('150')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+
+    await button('02 方案比较').click()
+    const selects = page.locator('.comparison-selectors select')
+    await selects.nth(0).selectOption({ label: '庭院样房 · 岩棉外墙' })
+    await selects.nth(1).selectOption({ label: '木纤维替代构造' })
+
+    // 差异逐项列出，并先看到不改动构造的预览。
+    const pairwise = page.locator('[data-check="pairwise-align"]')
+    await pairwise.waitFor()
+    const areaDifference = pairwise.locator('[data-check="caliber-area"]')
+    await assert.match(await areaDifference.innerText(), /150[\s\S]*→[\s\S]*200/)
+    assert.equal(await pairwise.locator('[data-check="preview-intensity-delta"]').innerText(), '不变')
+    assert.equal(
+      await pairwise.locator('[data-check="preview-transmittance-delta"]').innerText(),
+      '不变',
+    )
+    assert.match(await pairwise.locator('[data-check="preview-whole-delta"]').innerText(), /\+/)
+
+    // 取消对齐：什么都不改，差异仍然存在。
+    await button('将此替代构造对齐到基准并保存').click()
+    await button('取消，不做修改').click()
+    await assert.match(await areaDifference.innerText(), /150[\s\S]*→[\s\S]*200/)
+
+    // 确认后经同一修订保护保存，比较结果立即可比。
+    await button('将此替代构造对齐到基准并保存').click()
+    await button('确认保存对齐结果').click()
+    await text('替代构造已按基准统一部位、面积和年限。').waitFor()
+    assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+
+    // 把基准改为面积 150，让木纤维（200）与第三（300）同时偏离，再批量对齐。
+    await button('01 构造编辑').click()
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '庭院样房 · 岩棉外墙 · 编辑中',
+    })
+    await areaInput().fill('150')
     await button('保存构造').click()
     await text('构造已保存。').waitFor()
     await button('02 方案比较').click()
-    await text('构造面积不同，请先统一计算口径。').waitFor()
-    await button('将替代构造统一为基准口径').click()
-    await text('替代构造已按基准统一部位、面积和年限。').waitFor()
-    assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+    await page.getByRole('checkbox', { name: '选择构造 木纤维替代构造' }).check()
+    await page.getByRole('checkbox', { name: '选择构造 第三替代构造' }).check()
+    await page.locator('[data-check="batch-preview"]').waitFor()
+    await button(/^一次性保存/).click()
+    await text('已将 2 个构造一次性对齐到基准口径。').waitFor()
+    const alignedReasons = page.getByText('口径已与基准一致，无需修改', { exact: false })
+    assert.equal(await alignedReasons.count(), 2)
+
+    // 编辑区占用且有未保存修改：行被标出且不能勾选。
+    await button('01 构造编辑').click()
+    await page.getByLabel('当前构造', { exact: true }).selectOption({
+      label: '木纤维替代构造 · 编辑中',
+    })
+    await areaInput().fill('50')
+    await button('02 方案比较').click()
+    await page.getByText('正在编辑区占用且有未保存修改').first().waitFor()
+    assert.equal(
+      await page.getByRole('checkbox', { name: '选择构造 木纤维替代构造' }).isDisabled(),
+      true,
+    )
+
+    // 已定稿同样被标出，不能混入整批或逐对保存。
+    await button('01 构造编辑').click()
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    await button('02 方案比较').click()
+    await page
+      .getByText('已定稿，需先重新开启编辑', { exact: false })
+      .first()
+      .waitFor()
+    assert.equal(
+      await page.getByRole('checkbox', { name: '选择构造 木纤维替代构造' }).isDisabled(),
+      true,
+    )
+    const pairwiseBlocked = page.locator('[data-check="pairwise-blocked"]')
+    await pairwiseBlocked.waitFor()
+    assert.match(await pairwiseBlocked.innerText(), /该替代构造已定稿/)
   }
 
   if (workflow === 'document') {

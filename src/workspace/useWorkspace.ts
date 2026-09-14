@@ -10,6 +10,7 @@ import { createDocument } from '../documents/create'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
+import { alignedAssembly } from '../comparison/compare'
 
 export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
 
@@ -137,18 +138,21 @@ export function useWorkspace() {
     update({ layers: moveLayer(draft.value.layers, id, direction) })
   }
 
-  async function act(change: (next: EnvelopeData) => void, text: string): Promise<boolean> {
-    if (!data.value || busy.value || fatal.value) return false
+  async function act<T>(change: (next: EnvelopeData) => T, text: string): Promise<T | null> {
+    if (!data.value || busy.value || fatal.value) return null
     clearFeedback()
     busy.value = true
     try {
-      data.value = await commitData(data.value.stamp, change)
+      let outcome: T
+      data.value = await commitData(data.value.stamp, (next) => {
+        outcome = change(next)
+      })
       externalChange.value = false
       notice.value = text
-      return true
+      return outcome!
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : '操作未完成，请重试。'
-      return false
+      return null
     } finally {
       busy.value = false
     }
@@ -173,6 +177,7 @@ export function useWorkspace() {
         if (next.assemblies.length >= 200) throw new Error('最多保存 200 个构造。')
         next.assemblies.push(candidate)
       }
+      return true
     }, '构造已保存。')
     if (saved) draft.value = clone(candidate)
   }
@@ -191,6 +196,7 @@ export function useWorkspace() {
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
+      return true
     }, '计算书已定稿，构造现为只读。')
     if (saved) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
@@ -208,6 +214,7 @@ export function useWorkspace() {
       assembly.state = 'editing'
       assembly.revision += 1
       assembly.updatedAt = now()
+      return true
     }, '已重新开启编辑，历史计算书保持不变。')
     if (saved) {
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
@@ -222,35 +229,83 @@ export function useWorkspace() {
       error.value = errors[0]
       return false
     }
-    return act((next) => {
+    const saved = await act((next) => {
       if (next.materials.length >= 500) throw new Error('最多保存 500 种材料。')
       if (next.materials.some((material) => material.name.trim() === candidate.name.trim())) {
         throw new Error('材料名称已存在，请使用可区分的名称。')
       }
       candidate.name = candidate.name.trim()
       next.materials.push(candidate)
+      return true
     }, '自定义材料已保存，可在构造中选用。')
+    return saved !== null
   }
 
-  async function alignAlternative() {
-    if (dirty.value) {
+  /**
+   * 把一个或多个编辑中构造一次性对齐到当前基准的部位、面积与年限。
+   * 整批在同一互斥锁与修订核对内提交：任一构造不可对齐即整体中止，绝不部分写入；
+   * 不为批量放宽单个构造的校验，也不覆盖其他标签页已保存的结果。
+   */
+  async function alignAssemblies(targetIds: string[]): Promise<boolean> {
+    if (busy.value || fatal.value) return false
+    const ids = Array.from(new Set(targetIds))
+    if (!ids.length) {
+      error.value = '请先勾选需要对齐的构造。'
+      return false
+    }
+    // 批量（多于一个）不允许覆盖编辑区占用的构造；单个对齐沿用编辑区保护规则，
+    // 但要求当前草稿已保存，避免把未保存修改静默冲掉。
+    if (ids.length > 1 && ids.some((id) => id === draft.value?.id)) {
+      error.value =
+        '「' + draft.value!.name + '」正在编辑区占用，请先在构造编辑中保存或改选其他构造。'
+      return false
+    }
+    if (ids.length === 1 && ids[0] === draft.value?.id && dirty.value) {
       error.value = '请先保存当前构造，避免口径调整覆盖编辑内容。'
-      return
+      return false
     }
-    const saved = await act((next) => {
-      const a = next.assemblies.find((item) => item.id === baselineId.value)
-      const b = next.assemblies.find((item) => item.id === alternativeId.value)
-      if (!a || !b || a.id === b.id) throw new Error('请选择两个不同的构造。')
-      requireEditable(b)
-      b.area = a.area
-      b.years = a.years
-      b.surface = a.surface
-      b.revision += 1
-      b.updatedAt = now()
-    }, '替代构造已按基准统一部位、面积和年限。')
-    if (saved && draft.value) {
-      draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
+    const changedIds = await act((next) => {
+      const baseline = next.assemblies.find((item) => item.id === baselineId.value)
+      if (!baseline) throw new Error('请先选择基准构造。')
+      const changed: string[] = []
+      for (const id of ids) {
+        if (id === baseline.id) continue
+        const target = next.assemblies.find((item) => item.id === id)
+        if (!target) throw new Error('待对齐构造不存在，请刷新列表后重试。')
+        requireEditable(target)
+        const aligned = alignedAssembly(baseline, target)
+        if (validateAssembly(aligned, next.materials).length) {
+          throw new Error(
+            `「${target.name}」对齐后未通过构造校验，请先修正再统一口径；本次未保存任何改动。`,
+          )
+        }
+        if (
+          target.surface !== baseline.surface ||
+          target.area !== baseline.area ||
+          target.years !== baseline.years
+        ) {
+          target.surface = aligned.surface
+          target.area = aligned.area
+          target.years = aligned.years
+          target.revision += 1
+          target.updatedAt = now()
+          changed.push(id)
+        }
+      }
+      if (!changed.length) throw new Error('所选构造与基准口径已一致，无需保存。')
+      return changed
+    }, '')
+    if (changedIds) {
+      notice.value =
+        changedIds.length === 1
+          ? '替代构造已按基准统一部位、面积和年限。'
+          : `已将 ${changedIds.length} 个构造一次性对齐到基准口径。`
+      if (draft.value && changedIds.includes(draft.value.id)) {
+        draft.value = clone(data.value!.assemblies.find((item) => item.id === draft.value!.id)!)
+      }
+      return true
     }
+    return false
   }
 
   function onStorage(event: StorageEvent) {
@@ -305,6 +360,6 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
-    alignAlternative,
+    alignAssemblies,
   }
 }

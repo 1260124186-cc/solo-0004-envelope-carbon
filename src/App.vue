@@ -35,7 +35,7 @@ const {
   finalize,
   reopen,
   addCustomMaterial,
-  alignAlternative,
+  alignAssemblies,
 } = useWorkspace()
 </script>
 
@@ -102,7 +102,8 @@ const {
         :materials="data.materials"
         :busy="busy"
         :dirty="dirty"
-        @align="alignAlternative"
+        :draft-id="draft?.id ?? ''"
+        :align-assemblies="alignAssemblies"
         @design="tab = 'design'"
       />
       <DocumentWorkspace
