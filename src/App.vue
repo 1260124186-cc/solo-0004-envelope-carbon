@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import SelfcheckWorkspace from './selfcheck/SelfcheckWorkspace.vue'
 const {
   data,
   draft,
@@ -46,19 +47,28 @@ const {
   />
   <main class="workspace-main">
     <div
-      v-if="fatal"
+      v-if="fatal && tab !== 'selfcheck'"
       class="fatal-panel"
       role="alert"
     >
       <h1>设计暂时无法载入</h1>
       <p>{{ fatal }}</p>
-      <button
-        class="button primary"
-        @click="load()"
-      >
-        重试读取
-      </button>
+      <div class="actions">
+        <button
+          class="button primary"
+          @click="load()"
+        >
+          重试读取
+        </button>
+        <button
+          class="button"
+          @click="tab = 'selfcheck'"
+        >
+          查看数据自检
+        </button>
+      </div>
     </div>
+    <SelfcheckWorkspace v-else-if="tab === 'selfcheck'" />
     <template v-else-if="data && draft">
       <FeedbackBanner
         :error="error"

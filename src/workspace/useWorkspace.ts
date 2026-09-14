@@ -11,7 +11,7 @@ import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
 
-export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials'
+export type WorkspaceTab = 'design' | 'compare' | 'documents' | 'materials' | 'selfcheck'
 
 export function useWorkspace() {
   const data = shallowRef<EnvelopeData | null>(null)
