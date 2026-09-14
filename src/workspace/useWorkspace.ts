@@ -232,6 +232,18 @@ export function useWorkspace() {
     }, '自定义材料已保存，可在构造中选用。')
   }
 
+  async function toggleMaterialRetired(material: Material): Promise<boolean> {
+    const retiring = !material.retired
+    return act((next) => {
+      const target = next.materials.find((item) => item.id === material.id)
+      if (!target) throw new Error('材料不存在，请重新加载。')
+      if (!target.custom) throw new Error('内置示例材料不可停用。')
+      target.retired = retiring
+    }, retiring
+      ? '材料已停用：既有构造层仍按原参数计算，新层不再可选；可在材料页筛选「已停用」恢复。'
+      : '材料已恢复，可继续用于新构造层。')
+  }
+
   async function alignAlternative() {
     if (dirty.value) {
       error.value = '请先保存当前构造，避免口径调整覆盖编辑内容。'
@@ -305,6 +317,7 @@ export function useWorkspace() {
     finalize,
     reopen,
     addCustomMaterial,
+    toggleMaterialRetired,
     alignAlternative,
   }
 }

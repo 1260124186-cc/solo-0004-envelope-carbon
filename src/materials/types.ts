@@ -11,6 +11,7 @@ export interface Material {
   source: string
   description: string
   custom: boolean
+  retired: boolean
 }
 
 export const kindLabels: Record<MaterialKind, string> = {

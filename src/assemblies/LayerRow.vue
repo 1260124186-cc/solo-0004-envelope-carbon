@@ -17,6 +17,9 @@ const emit = defineEmits<{
   move: [direction: -1 | 1]
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
+const options = computed(() =>
+  props.materials.filter((item) => !item.retired || item.id === props.layer.materialId),
+)
 function changeMaterial(event: Event) {
   const selected = props.materials.find(
     (item) => item.id === (event.target as HTMLSelectElement).value,
@@ -51,11 +54,11 @@ function numeric(event: Event): number {
             @change="changeMaterial"
           >
             <option
-              v-for="item in materials"
+              v-for="item in options"
               :key="item.id"
               :value="item.id"
             >
-              {{ item.name }}
+              {{ item.name }}{{ item.retired ? '（已停用）' : '' }}
             </option>
           </select>
         </label>
@@ -134,6 +137,13 @@ function numeric(event: Event): number {
         密度 {{ number(material.density) }} 千克/立方米 <span>·</span> 碳因子
         {{ number(material.factor) }} 千克当量/千克
       </p>
+      <p
+        v-if="material?.retired"
+        class="layer-retired"
+        role="status"
+      >
+        材料已停用：本层仍按原参数计算；替换为其他材料后不可再选回。
+      </p>
     </div>
   </fieldset>
 </template>
@@ -201,6 +211,14 @@ function numeric(event: Event): number {
 }
 .layer-reference span {
   margin: 0 8px;
+}
+.layer-retired {
+  color: #855123;
+  background: #fcf3de;
+  font-size: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 10px 0 0;
 }
 @media (max-width: 600px) {
   .layer-row {

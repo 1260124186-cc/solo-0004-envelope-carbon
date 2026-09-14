@@ -19,6 +19,7 @@ const form = reactive<Material>({
   source: '',
   description: '',
   custom: true,
+  retired: false,
 })
 const issues = computed(() => validateMaterial(form))
 async function submit() {

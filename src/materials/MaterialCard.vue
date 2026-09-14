@@ -2,17 +2,25 @@
 import type { Material } from './types'
 import { kindLabels, kindColors } from './types'
 import { number } from '../shared/format'
-defineProps<{ material: Material }>()
+defineProps<{ material: Material; busy: boolean }>()
+const emit = defineEmits<{ toggle: [] }>()
 </script>
 
 <template>
   <section
     class="material-card"
+    :class="{ retired: material.retired }"
     :style="{ borderTopColor: kindColors[material.kind] }"
   >
     <div class="card-topline">
       <span>{{ kindLabels[material.kind] }}</span
-      ><span>{{ material.custom ? '自定义物性' : '教学示例' }}</span>
+      ><span
+        ><span
+          v-if="material.retired"
+          class="retired-flag"
+          >已停用 · </span
+        >{{ material.custom ? '自定义物性' : '教学示例' }}</span
+      >
     </div>
     <h2>{{ material.name }}</h2>
     <p class="material-description">{{ material.description || '无补充说明。' }}</p>
@@ -35,6 +43,18 @@ defineProps<{ material: Material }>()
       </div>
     </dl>
     <p class="material-source">{{ material.source }}</p>
+    <div
+      v-if="material.custom"
+      class="card-actions"
+    >
+      <button
+        class="button small"
+        :disabled="busy"
+        @click="emit('toggle')"
+      >
+        {{ material.retired ? '恢复材料' : '停用材料' }}
+      </button>
+    </div>
   </section>
 </template>
 
@@ -86,5 +106,16 @@ defineProps<{ material: Material }>()
   border-top: 1px solid var(--line);
   padding-top: 12px;
   color: var(--muted);
+}
+.material-card.retired {
+  opacity: 0.62;
+}
+.retired-flag {
+  color: #a34f3a;
+}
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 </style>

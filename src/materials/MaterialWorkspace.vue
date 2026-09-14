@@ -8,15 +8,18 @@ const props = defineProps<{
   materials: Material[]
   busy: boolean
   submitMaterial: (material: Material) => Promise<boolean>
+  toggleMaterial: (material: Material) => Promise<boolean>
 }>()
 const query = shallowRef('')
 const kind = shallowRef<MaterialKind | ''>('')
+const status = shallowRef<'active' | 'retired' | ''>('active')
 const showForm = shallowRef(false)
 const visible = computed(() => {
   const needle = query.value.trim().toLocaleLowerCase()
   return props.materials.filter(
     (material) =>
       (!kind.value || material.kind === kind.value) &&
+      (status.value === '' || (status.value === 'retired') === material.retired) &&
       (!needle || `${material.name} ${material.source}`.toLocaleLowerCase().includes(needle)),
   )
 })
@@ -55,7 +58,10 @@ const visible = computed(() => {
       /></label>
       <label
         >材料类别
-        <select v-model="kind">
+        <select
+          v-model="kind"
+          aria-label="材料类别"
+        >
           <option value="">全部类别</option>
           <option
             v-for="(label, key) in kindLabels"
@@ -64,6 +70,17 @@ const visible = computed(() => {
           >
             {{ label }}
           </option>
+        </select>
+      </label>
+      <label
+        >状态
+        <select
+          v-model="status"
+          aria-label="状态"
+        >
+          <option value="active">使用中</option>
+          <option value="retired">已停用</option>
+          <option value="">全部状态</option>
         </select>
       </label>
       <span class="muted">{{ visible.length }} 种材料</span>
@@ -76,13 +93,15 @@ const visible = computed(() => {
         v-for="material in visible"
         :key="material.id"
         :material="material"
+        :busy="busy"
+        @toggle="toggleMaterial(material)"
       />
     </div>
     <div
       v-else
       class="empty-state"
     >
-      没有符合条件的材料。请调整搜索词或类别。
+      没有符合条件的材料。请调整搜索词、类别或状态。
     </div>
   </section>
 </template>

@@ -12,6 +12,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 混凝土',
     description: '用于演示质量法计算；工程中应按实际强度等级校核。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-aerated',
@@ -24,6 +25,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 轻质砌体',
     description: '简化干态导热系数，不含灰缝影响。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-brick',
@@ -36,6 +38,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 多孔砖',
     description: '密度为构造等效密度，需与实际孔洞率一致。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-mineral',
@@ -48,6 +51,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 岩棉',
     description: '仅计材料层，未包含锚固件与粘结层。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-woodfiber',
@@ -60,6 +64,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 木纤维',
     description: '本模型不抵扣生物源碳储存。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-foamglass',
@@ -72,6 +77,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 泡沫玻璃',
     description: '闭孔材料演示参数，实际数值依制造方法而变。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-lime',
@@ -84,6 +90,7 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 砂浆',
     description: '按每次整体替换计算，不含后期碳化修正。',
     custom: false,
+    retired: false,
   },
   {
     id: 'env-gypsum',
@@ -96,5 +103,6 @@ export const referenceMaterials: Material[] = [
     source: '教学示例参数 · 石膏',
     description: '不计龙骨及接缝材料，需另建构造层。',
     custom: false,
+    retired: false,
   },
 ]

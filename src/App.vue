@@ -35,6 +35,7 @@ const {
   finalize,
   reopen,
   addCustomMaterial,
+  toggleMaterialRetired,
   alignAlternative,
 } = useWorkspace()
 </script>
@@ -121,6 +122,7 @@ const {
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+        :toggle-material="toggleMaterialRetired"
       />
     </template>
     <div

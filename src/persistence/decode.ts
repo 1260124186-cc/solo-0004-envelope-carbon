@@ -42,6 +42,7 @@ export function decode(raw: string): EnvelopeData {
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
     for (const material of data.materials) {
+      material.retired = material.retired === true
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')
       }
@@ -54,6 +55,7 @@ export function decode(raw: string): EnvelopeData {
       if (validateAssembly(assembly, data.materials).length) throw new Error('构造参数无效。')
     }
     for (const document of data.documents) {
+      for (const material of document.materials) material.retired = material.retired === true
       if (document.assemblyId !== document.assembly.id || document.assembly.state !== 'finalized') {
         throw new Error('计算书与冻结构造不一致。')
       }

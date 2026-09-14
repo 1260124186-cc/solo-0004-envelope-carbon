@@ -4,14 +4,15 @@ import type { Material } from './types'
 const props = defineProps<{ materials: Material[]; disabled: boolean }>()
 const emit = defineEmits<{ add: [material: Material] }>()
 const selectedId = shallowRef('')
+const available = computed(() => props.materials.filter((item) => !item.retired))
 watch(
-  () => props.materials,
+  available,
   (items) => {
     if (!items.some((item) => item.id === selectedId.value)) selectedId.value = items[0]?.id ?? ''
   },
   { immediate: true },
 )
-const selected = computed(() => props.materials.find((item) => item.id === selectedId.value))
+const selected = computed(() => available.value.find((item) => item.id === selectedId.value))
 function add() {
   if (selected.value && !props.disabled) emit('add', selected.value)
 }
@@ -27,7 +28,7 @@ function add() {
         :disabled="disabled"
       >
         <option
-          v-for="material in materials"
+          v-for="material in available"
           :key="material.id"
           :value="material.id"
         >
