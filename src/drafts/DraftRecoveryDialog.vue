@@ -172,12 +172,33 @@ function materialName(materialId: string): string {
               </tbody>
             </table>
           </div>
-          <p
+          <div
             v-if="diff.movedLayers.length"
-            class="moved-note"
+            class="layer-diff-group"
           >
-            另有 {{ diff.movedLayers.length }} 个构造层调整了排列顺序。
-          </p>
+            <h3>构造层排列顺序变化</h3>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>构造层</th>
+                    <th>正式保存版本层位</th>
+                    <th>草稿层位</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="move in diff.movedLayers"
+                    :key="move.id"
+                  >
+                    <th>{{ move.materialName }}</th>
+                    <td>第 {{ move.from }} 层</td>
+                    <td class="draft-cell">第 {{ move.to }} 层</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </template>
       </template>
 

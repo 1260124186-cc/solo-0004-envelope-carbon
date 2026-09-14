@@ -16,13 +16,20 @@ export interface LayerChange {
   details: FieldChange[]
 }
 
+export interface LayerMove {
+  id: string
+  materialName: string
+  from: number
+  to: number
+}
+
 export interface AssemblyDiff {
   hasChanges: boolean
   fieldChanges: FieldChange[]
   addedLayers: Layer[]
   removedLayers: Layer[]
   changedLayers: LayerChange[]
-  movedLayers: Array<{ id: string; materialName: string }>
+  movedLayers: LayerMove[]
 }
 
 function text(value: number | string): string {
@@ -76,14 +83,17 @@ export function diffAssemblies(
   const removedLayers = saved.layers.filter((layer) => !draftById.has(layer.id))
 
   const changedLayers: LayerChange[] = []
-  const movedLayers: Array<{ id: string; materialName: string }> = []
+  const movedLayers: LayerMove[] = []
   for (const [index, draftLayer] of draft.layers.entries()) {
     const savedLayer = savedById.get(draftLayer.id)
     if (!savedLayer) continue
-    if (saved.layers.indexOf(savedLayer) !== index) {
+    const savedIndex = saved.layers.indexOf(savedLayer)
+    if (savedIndex !== index) {
       movedLayers.push({
         id: draftLayer.id,
         materialName: materialNameOf(draftLayer.materialId, materials),
+        from: savedIndex + 1,
+        to: index + 1,
       })
     }
     const details: FieldChange[] = []
@@ -114,7 +124,8 @@ export function diffAssemblies(
       fieldChanges.length > 0 ||
       addedLayers.length > 0 ||
       removedLayers.length > 0 ||
-      changedLayers.length > 0,
+      changedLayers.length > 0 ||
+      movedLayers.length > 0,
     fieldChanges,
     addedLayers,
     removedLayers,

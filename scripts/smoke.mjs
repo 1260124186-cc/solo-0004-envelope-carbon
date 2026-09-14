@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'reorder'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 reorder 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,63 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'reorder') {
+    const DRAFT_KEY = 'solo-0004-envelope-carbon:draft:v1'
+    // 先正式保存，使正式版本进入浏览器存储，形成可比对基线
+    await page.getByLabel('第 1 层损耗', { exact: true }).fill('4')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await page.getByLabel('第 1 层损耗', { exact: true }).fill('5')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    // 仅调换层序：把第 3 层（蒸压加气混凝土）下移到第 4 层
+    await page.getByRole('button', { name: '下移第 3 层', exact: true }).click()
+    const layerMaterials = () =>
+      page.getByLabel(/^第 \d+ 层材料$/).evaluateAll((nodes) => nodes.map((node) => node.value))
+    assert.deepEqual(await layerMaterials(), [
+      'env-lime',
+      'env-mineral',
+      'env-gypsum',
+      'env-aerated',
+    ])
+    // 只有层序变化也必须自动保存草稿，不能被静默清掉
+    await page.getByText('草稿已自动保存', { exact: false }).waitFor()
+    const pending = await page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY)
+    assert.notEqual(pending, null)
+    assert.deepEqual(
+      JSON.parse(pending).assembly.layers.map((layer) => layer.id),
+      ['ply-exterior', 'ply-insulation', 'ply-interior', 'ply-body'],
+    )
+    // 异常关闭后重新进入：恢复弹窗必须展示层序变化
+    await page.reload()
+    await page.getByRole('heading', { name: '发现未保存的草稿' }).waitFor()
+    await page.getByText('构造层排列顺序变化', { exact: true }).waitFor()
+    const moveRow = page.locator('table', { hasText: '正式保存版本层位' }).locator('tr', {
+      hasText: '蒸压加气混凝土',
+    })
+    await moveRow.waitFor()
+    assert.match(await moveRow.innerText(), /第 3 层[\s\S]*第 4 层/)
+    assert.equal(await page.getByText('石膏板').first().isVisible(), true)
+    // 恢复后层序保持调换，正式保存成功
+    await button('恢复到编辑区').click()
+    assert.deepEqual(await layerMaterials(), [
+      'env-lime',
+      'env-mineral',
+      'env-gypsum',
+      'env-aerated',
+    ])
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    assert.equal(await page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY), null)
+    await page.reload()
+    await page.locator('[data-check="intensity"]').waitFor()
+    assert.deepEqual(await layerMaterials(), [
+      'env-lime',
+      'env-mineral',
+      'env-gypsum',
+      'env-aerated',
+    ])
   }
   assert.deepEqual(pageErrors, [])
   await context.close()
