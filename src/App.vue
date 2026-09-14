@@ -71,6 +71,7 @@ const {
         v-if="tab === 'design' || tab === 'documents'"
         :assemblies="data.assemblies"
         :selected-id="draft.id"
+        :draft-name="draft.name"
         :busy="busy"
         :can-duplicate="!dirty"
         @select="select"

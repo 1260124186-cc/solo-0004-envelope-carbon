@@ -58,6 +58,41 @@ try {
     await page.getByLabel('当前构造', { exact: true }).selectOption({ label: '清水构造 · 编辑中' })
     assert.equal(await intensity.innerText(), '31.2')
     assert.equal(await page.getByLabel('第 1 层厚度', { exact: true }).inputValue(), '100')
+
+    // 名称搜索只缩小候选，不改变当前构造身份。
+    await page.getByLabel('按名称搜索构造', { exact: true }).fill('不存在的构造名')
+    await page.locator('[data-check="picker-empty"]').waitFor()
+    const currentSelect = page.getByLabel('当前构造', { exact: true })
+    assert.equal(await currentSelect.locator('option').count(), 1)
+    assert.match(
+      await currentSelect.locator('option').innerText(),
+      /清水构造 · 编辑中（不在当前筛选内）/,
+    )
+    assert.equal(await page.getByLabel('构造名称', { exact: true }).inputValue(), '清水构造')
+    await button('清除筛选').first().click()
+    assert.equal(await currentSelect.locator('option').count(), 2)
+
+    // 状态筛选无匹配时，当前身份仍被钉住且工作区可继续操作。
+    await page.getByLabel('按构造状态筛选', { exact: true }).selectOption({ label: '已定稿' })
+    await page.locator('[data-check="picker-empty"]').waitFor()
+    assert.equal(await page.getByLabel('构造名称', { exact: true }).inputValue(), '清水构造')
+    await page.getByRole('button', { name: '清除筛选', exact: true }).first().click()
+
+    // 最近修改排序：刚保存的清水构造排在示例构造之前。
+    await page.getByLabel('构造排序方式', { exact: true }).selectOption({ label: '最近修改时间' })
+    assert.match(await currentSelect.locator('option').first().innerText(), /^清水构造 · 编辑中/)
+    await page.getByLabel('构造排序方式', { exact: true }).selectOption({ label: '保存顺序' })
+
+    // 有未保存修改时取消切换：下拉回退，身份与编辑内容都保留。
+    await page.getByLabel('第 1 层厚度', { exact: true }).fill('120')
+    page.once('dialog', (dialog) => dialog.dismiss())
+    await currentSelect.selectOption({ label: '庭院样房 · 岩棉外墙 · 编辑中' })
+    assert.equal(
+      await currentSelect.inputValue(),
+      await currentSelect.locator('option', { hasText: '清水构造' }).first().getAttribute('value'),
+    )
+    assert.equal(await page.getByLabel('构造名称', { exact: true }).inputValue(), '清水构造')
+    assert.equal(await page.getByLabel('第 1 层厚度', { exact: true }).inputValue(), '120')
   }
 
   if (workflow === 'compare') {
