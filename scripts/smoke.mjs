@@ -78,6 +78,59 @@ try {
     await button('将替代构造统一为基准口径').click()
     await text('替代构造已按基准统一部位、面积和年限。').waitFor()
     assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '-11.54')
+
+    // 交换基准与替代后，差值、比例与同口径说明须以新基准重算。
+    const filterBox = page.locator('[data-check="only-changed"]')
+    const baselineId = await page.getByLabel('基准构造', { exact: true }).inputValue()
+    const alternativeId = await page.getByLabel('替代构造', { exact: true }).inputValue()
+    await button('⇄ 交换基准与替代').click()
+    assert.equal(await page.locator('[data-check="carbon-delta"]').innerText(), '+11.54')
+    assert.ok(
+      (await page.locator('[data-check="carbon-percent"]').innerText()).startsWith('+14.68'),
+    )
+    assert.equal(await page.getByLabel('基准构造', { exact: true }).inputValue(), alternativeId)
+    assert.equal(await page.getByLabel('替代构造', { exact: true }).inputValue(), baselineId)
+
+    // 只看有变化的计算项：总厚度完全相同，应被隐藏；其余五项保留。
+    const tableRow = (key) => page.locator(`tr[data-row="${key}"]`)
+    assert.equal(await page.locator('tbody tr[data-row]').count(), 6)
+    await filterBox.check()
+    assert.equal(await page.locator('tbody tr[data-row]').count(), 5)
+    assert.equal(await tableRow('thickness').count(), 0)
+    assert.equal(await tableRow('intensity').count(), 1)
+    await filterBox.uncheck()
+    assert.equal(await tableRow('thickness').count(), 1)
+
+    // 接近相等但数值不同：强度、初始、替换、传热系数列的两位小数显示值完全
+    // 相同，但原始数值严格不等，过滤后这些行不得被误判为无变化而隐藏。
+    await button('01 构造编辑').click()
+    await button('复制为替代方案').click()
+    await page.getByLabel('第 2 层厚度', { exact: true }).fill('100.01')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('02 方案比较').click()
+    await page.locator('[data-check="carbon-delta"]').waitFor()
+    await filterBox.check()
+    const intensityCells = tableRow('intensity').locator('td')
+    assert.equal(await intensityCells.nth(0).innerText(), await intensityCells.nth(1).innerText())
+    assert.equal(await tableRow('intensity').count(), 1)
+    assert.equal(await tableRow('initial').count(), 1)
+    assert.equal(await tableRow('replacement').count(), 1)
+    assert.equal(await tableRow('whole').count(), 1)
+    assert.equal(await tableRow('transmittance').count(), 1)
+    assert.equal(await tableRow('thickness').count(), 1)
+    assert.equal(await page.locator('tbody tr[data-row]').count(), 6)
+
+    // 完全相同的构造再过滤时应提示没有差异。
+    await button('01 构造编辑').click()
+    await button('复制为替代方案').click()
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    await button('02 方案比较').click()
+    await page.locator('[data-check="carbon-delta"]').waitFor()
+    await filterBox.check()
+    assert.equal(await page.locator('tbody tr[data-row]').count(), 0)
+    assert.equal(await page.locator('[data-check="no-changed-rows"]').count(), 1)
   }
 
   if (workflow === 'document') {

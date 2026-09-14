@@ -36,6 +36,15 @@ const canAlign = computed(
     baseline.value.id !== alternative.value.id &&
     alternative.value.state === 'editing',
 )
+const canSwap = computed(() => Boolean(baseline.value && alternative.value))
+function swapSchemes() {
+  // 交换基准与替代：对调两个标识后由 evaluation 重新调用 compare，
+  // 差值、相对比例、达标状态与同口径校验均以新基准重算，而非仅调换列名。
+  if (!canSwap.value) return
+  const previousBaseline = baselineId.value
+  baselineId.value = alternativeId.value
+  alternativeId.value = previousBaseline
+}
 </script>
 
 <template>
@@ -70,6 +79,7 @@ const canAlign = computed(
           >基准构造
           <select
             v-model="baselineId"
+            aria-label="基准构造"
             :disabled="busy"
           >
             <option
@@ -87,15 +97,28 @@ const canAlign = computed(
             </option>
           </select>
         </label>
-        <span
-          class="comparison-arrow"
-          aria-hidden="true"
-          >→</span
-        >
+        <div class="comparison-swap">
+          <span
+            class="comparison-arrow"
+            aria-hidden="true"
+            >→</span
+          >
+          <button
+            type="button"
+            class="button small"
+            data-check="swap-schemes"
+            :disabled="busy || !canSwap"
+            title="对调基准与替代，并以新基准重算全部差值"
+            @click="swapSchemes"
+          >
+            ⇄ 交换基准与替代
+          </button>
+        </div>
         <label
           >替代构造
           <select
             v-model="alternativeId"
+            aria-label="替代构造"
             :disabled="busy"
           >
             <option
@@ -155,9 +178,14 @@ const canAlign = computed(
   gap: 20px;
   margin: 28px 0;
 }
+.comparison-swap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
 .comparison-arrow {
-  padding-bottom: 12px;
-  text-align: center;
   color: var(--green);
 }
 @media (max-width: 650px) {
@@ -165,8 +193,9 @@ const canAlign = computed(
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  .comparison-arrow {
-    display: none;
+  .comparison-swap {
+    flex-direction: row;
+    justify-content: center;
   }
 }
 </style>
