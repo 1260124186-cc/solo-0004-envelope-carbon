@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import type { Assembly } from '../assemblies/types'
 import type { Material } from '../materials/types'
-import { compare, comparableReasons } from './compare'
+import { compare, comparableReasons, compareAlternatives } from './compare'
+import ComparisonOverview from './ComparisonOverview.vue'
 import ComparisonResult from './ComparisonResult.vue'
 const props = defineProps<{
   assemblies: Assembly[]
@@ -12,9 +13,23 @@ const props = defineProps<{
 }>()
 const baselineId = defineModel<string>('baselineId', { required: true })
 const alternativeId = defineModel<string>('alternativeId', { required: true })
+const alternativeIds = defineModel<string[]>('alternativeIds', { required: true })
 const emit = defineEmits<{ align: []; design: [] }>()
 const baseline = computed(() => props.assemblies.find((item) => item.id === baselineId.value))
 const alternative = computed(() => props.assemblies.find((item) => item.id === alternativeId.value))
+const participants = computed(() =>
+  props.assemblies.filter(
+    (item) => item.id !== baselineId.value && alternativeIds.value.includes(item.id),
+  ),
+)
+const overview = computed(() => {
+  if (!baseline.value) return null
+  try {
+    return compareAlternatives(baseline.value, participants.value, props.materials)
+  } catch {
+    return null
+  }
+})
 const evaluation = computed(() => {
   if (!baseline.value || !alternative.value)
     return { result: null, errors: ['请选择基准构造和替代构造。'] }
@@ -36,6 +51,11 @@ const canAlign = computed(
     baseline.value.id !== alternative.value.id &&
     alternative.value.state === 'editing',
 )
+function toggle(id: string) {
+  alternativeIds.value = alternativeIds.value.includes(id)
+    ? alternativeIds.value.filter((item) => item !== id)
+    : [...alternativeIds.value, id]
+}
 </script>
 
 <template>
@@ -65,34 +85,74 @@ const canAlign = computed(
       >
         编辑区仍有未保存修改，以下结果来自最近保存版本。
       </p>
-      <div class="comparison-selectors">
-        <label
-          >基准构造
-          <select
-            v-model="baselineId"
-            :disabled="busy"
-          >
-            <option
-              value=""
-              disabled
-            >
-              选择基准
-            </option>
-            <option
-              v-for="item in assemblies"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option>
-          </select>
-        </label>
-        <span
-          class="comparison-arrow"
-          aria-hidden="true"
-          >→</span
+      <label class="baseline-select"
+        >基准构造（总览与详细比较共用）
+        <select
+          v-model="baselineId"
+          :disabled="busy"
         >
-        <label
+          <option
+            value=""
+            disabled
+          >
+            选择基准
+          </option>
+          <option
+            v-for="item in assemblies"
+            :key="item.id"
+            :value="item.id"
+          >
+            {{ item.name }}
+          </option>
+        </select>
+      </label>
+      <section
+        class="overview-block"
+        aria-label="多替代总览"
+      >
+        <h2>多替代总览</h2>
+        <p class="section-intro">
+          勾选参与总览的替代构造。所有差值与相对比例以同一基准为参照，口径不一致的构造会被排除并说明原因。
+        </p>
+        <div
+          class="alternative-checks"
+          role="group"
+          aria-label="参与总览的替代构造"
+        >
+          <label
+            v-for="item in assemblies"
+            :key="item.id"
+            class="alternative-check"
+          >
+            <input
+              type="checkbox"
+              :checked="item.id !== baselineId && alternativeIds.includes(item.id)"
+              :disabled="busy || item.id === baselineId"
+              @change="toggle(item.id)"
+            />
+            <span
+              >{{ item.name }}<template v-if="item.id === baselineId">（当前基准）</template></span
+            >
+          </label>
+        </div>
+        <p
+          v-if="!participants.length"
+          class="empty-state"
+        >
+          尚未勾选替代构造。
+        </p>
+        <ComparisonOverview
+          v-else-if="overview && baseline"
+          :overview="overview"
+          :baseline-name="baseline.name"
+        />
+      </section>
+      <section
+        class="pair-block"
+        aria-label="两方案详细比较"
+      >
+        <h2>两方案详细比较</h2>
+        <label class="pair-select"
           >替代构造
           <select
             v-model="alternativeId"
@@ -113,32 +173,32 @@ const canAlign = computed(
             </option>
           </select>
         </label>
-      </div>
-      <div
-        v-if="evaluation.errors.length"
-        class="empty-state"
-      >
-        <p
-          v-for="error in evaluation.errors"
-          :key="error"
+        <div
+          v-if="evaluation.errors.length"
+          class="empty-state"
         >
-          {{ error }}
-        </p>
-        <button
-          v-if="canAlign"
-          class="button"
-          :disabled="busy || dirty"
-          @click="emit('align')"
-        >
-          将替代构造统一为基准口径
-        </button>
-      </div>
-      <ComparisonResult
-        v-if="evaluation.result && baseline && alternative"
-        :result="evaluation.result"
-        :baseline-name="baseline.name"
-        :alternative-name="alternative.name"
-      />
+          <p
+            v-for="error in evaluation.errors"
+            :key="error"
+          >
+            {{ error }}
+          </p>
+          <button
+            v-if="canAlign"
+            class="button"
+            :disabled="busy || dirty"
+            @click="emit('align')"
+          >
+            将替代构造统一为基准口径
+          </button>
+        </div>
+        <ComparisonResult
+          v-if="evaluation.result && baseline && alternative"
+          :result="evaluation.result"
+          :baseline-name="baseline.name"
+          :alternative-name="alternative.name"
+        />
+      </section>
     </template>
   </section>
 </template>
@@ -148,25 +208,39 @@ const canAlign = computed(
   max-width: 1100px;
   margin: 0 auto;
 }
-.comparison-selectors {
-  display: grid;
-  grid-template-columns: 1fr 30px 1fr;
-  align-items: end;
-  gap: 20px;
-  margin: 28px 0;
+.baseline-select {
+  max-width: 380px;
+  margin: 28px 0 0;
 }
-.comparison-arrow {
-  padding-bottom: 12px;
-  text-align: center;
-  color: var(--green);
+.overview-block,
+.pair-block {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
 }
-@media (max-width: 650px) {
-  .comparison-selectors {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .comparison-arrow {
-    display: none;
-  }
+.overview-block h2,
+.pair-block h2 {
+  margin: 0;
+}
+.alternative-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 22px;
+}
+.alternative-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.alternative-check input {
+  width: auto;
+  margin: 0;
+}
+.pair-select {
+  max-width: 380px;
+  margin: 18px 0 24px;
 }
 </style>

@@ -24,6 +24,7 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  const alternativeIds = shallowRef<string[]>([])
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -66,6 +67,7 @@ export function useWorkspace() {
       )
       baselineId.value = next.assemblies[0]?.id ?? ''
       alternativeId.value = next.assemblies[1]?.id ?? ''
+      alternativeIds.value = next.assemblies.slice(1).map((item) => item.id)
       fatal.value = ''
       externalChange.value = false
       clearFeedback()
@@ -100,6 +102,7 @@ export function useWorkspace() {
     baselineId.value = draft.value.id
     draft.value = duplicateAssembly(draft.value)
     alternativeId.value = draft.value.id
+    alternativeIds.value = [...alternativeIds.value, draft.value.id]
     tab.value = 'design'
     clearFeedback()
     notice.value = '已创建替代构造草稿，修改后保存即可比较。'
@@ -292,6 +295,7 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    alternativeIds,
     load,
     select,
     create,

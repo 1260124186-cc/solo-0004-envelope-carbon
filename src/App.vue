@@ -22,6 +22,7 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  alternativeIds,
   load,
   select,
   create,
@@ -98,6 +99,7 @@ const {
         v-else-if="tab === 'compare'"
         v-model:baseline-id="baselineId"
         v-model:alternative-id="alternativeId"
+        v-model:alternative-ids="alternativeIds"
         :assemblies="data.assemblies"
         :materials="data.materials"
         :busy="busy"
