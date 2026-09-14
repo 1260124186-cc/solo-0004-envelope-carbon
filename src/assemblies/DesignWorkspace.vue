@@ -13,6 +13,7 @@ defineProps<{
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  draftStatus: string
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
@@ -52,9 +53,17 @@ const emit = defineEmits<{
         @add="emit('addLayer', $event)"
       />
       <div class="design-footer">
-        <span class="save-indicator">{{
-          busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
-        }}</span>
+        <span class="save-indicator">
+          <span>{{
+            busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
+          }}</span>
+          <span
+            v-if="draftStatus"
+            class="draft-indicator"
+            :class="{ warning: draftStatus.includes('失败') }"
+            >{{ draftStatus }}</span
+          >
+        </span>
         <div class="actions">
           <template v-if="assembly.state === 'editing'">
             <button
@@ -126,6 +135,15 @@ const emit = defineEmits<{
 .save-indicator {
   font-size: 11px;
   color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.draft-indicator {
+  color: var(--green);
+}
+.draft-indicator.warning {
+  color: #922f20;
 }
 @media (max-width: 1000px) {
   .design-grid {

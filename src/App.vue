@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import DraftRecoveryDialog from './drafts/DraftRecoveryDialog.vue'
 const {
   data,
   draft,
@@ -22,6 +23,12 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  draftStatus,
+  pendingDraft,
+  pendingSaved,
+  pendingDiff,
+  draftStale,
+  draftFinalized,
   load,
   select,
   create,
@@ -36,6 +43,9 @@ const {
   reopen,
   addCustomMaterial,
   alignAlternative,
+  recoverDraft,
+  discardDraft,
+  saveDraftAsNew,
 } = useWorkspace()
 </script>
 
@@ -67,61 +77,77 @@ const {
         :busy="busy"
         @reload="load()"
       />
-      <AssemblyPicker
-        v-if="tab === 'design' || tab === 'documents'"
-        :assemblies="data.assemblies"
-        :selected-id="draft.id"
-        :busy="busy"
-        :can-duplicate="!dirty"
-        @select="select"
-        @create="create"
-        @duplicate="duplicate"
-      />
-      <DesignWorkspace
-        v-if="tab === 'design'"
-        :assembly="draft"
+      <DraftRecoveryDialog
+        v-if="pendingDraft"
+        :record="pendingDraft"
+        :saved="pendingSaved"
         :materials="data.materials"
-        :result="result"
-        :findings="findings"
+        :diff="pendingDiff"
+        :stale="draftStale"
+        :finalized="draftFinalized"
         :busy="busy"
-        :dirty="dirty"
-        @update="update"
-        @update-layer="updateLayer"
-        @remove-layer="removeLayer"
-        @move-layer="move"
-        @add-layer="addMaterial"
-        @save="save"
-        @finalize="finalize"
-        @reopen="reopen"
+        @recover="recoverDraft"
+        @discard="discardDraft"
+        @save-as="saveDraftAsNew"
       />
-      <ComparisonWorkspace
-        v-else-if="tab === 'compare'"
-        v-model:baseline-id="baselineId"
-        v-model:alternative-id="alternativeId"
-        :assemblies="data.assemblies"
-        :materials="data.materials"
-        :busy="busy"
-        :dirty="dirty"
-        @align="alignAlternative"
-        @design="tab = 'design'"
-      />
-      <DocumentWorkspace
-        v-else-if="tab === 'documents'"
-        :assembly="draft"
-        :documents="selectedDocuments"
-        :dirty="dirty"
-        :busy="busy"
-        :valid="Boolean(result)"
-        @finalize="finalize"
-        @reopen="reopen"
-        @design="tab = 'design'"
-      />
-      <MaterialWorkspace
-        v-else
-        :materials="data.materials"
-        :busy="busy"
-        :submit-material="addCustomMaterial"
-      />
+      <template v-else>
+        <AssemblyPicker
+          v-if="tab === 'design' || tab === 'documents'"
+          :assemblies="data.assemblies"
+          :selected-id="draft.id"
+          :busy="busy"
+          :can-duplicate="!dirty"
+          @select="select"
+          @create="create"
+          @duplicate="duplicate"
+        />
+        <DesignWorkspace
+          v-if="tab === 'design'"
+          :assembly="draft"
+          :materials="data.materials"
+          :result="result"
+          :findings="findings"
+          :busy="busy"
+          :dirty="dirty"
+          :draft-status="draftStatus"
+          @update="update"
+          @update-layer="updateLayer"
+          @remove-layer="removeLayer"
+          @move-layer="move"
+          @add-layer="addMaterial"
+          @save="save"
+          @finalize="finalize"
+          @reopen="reopen"
+        />
+        <ComparisonWorkspace
+          v-else-if="tab === 'compare'"
+          v-model:baseline-id="baselineId"
+          v-model:alternative-id="alternativeId"
+          :assemblies="data.assemblies"
+          :materials="data.materials"
+          :busy="busy"
+          :dirty="dirty"
+          @align="alignAlternative"
+          @design="tab = 'design'"
+        />
+        <DocumentWorkspace
+          v-else-if="tab === 'documents'"
+          :assembly="draft"
+          :documents="selectedDocuments"
+          :dirty="dirty"
+          :busy="busy"
+          :valid="Boolean(result)"
+          @finalize="finalize"
+          @reopen="reopen"
+          @design="tab = 'design'"
+        />
+        <MaterialWorkspace
+          v-else
+          :materials="data.materials"
+          :busy="busy"
+          :submit-material="addCustomMaterial"
+        />
+      </template>
     </template>
     <div
       v-else
