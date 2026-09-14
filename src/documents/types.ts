@@ -13,18 +13,22 @@ export interface CarbonDocument {
   result: Calculation
 }
 
-/** 找到某修订号最后一次保存时写下的备注；历史记录无备注时返回空字符串。 */
+/**
+ * 找到某修订号冻结记录中的备注：取同修订号最后一条有内容的记录，
+ * 可以是保存说明或重开说明（例如重开后立即定稿时只有重开记录）；
+ * 没有记录或均为空时返回空字符串。
+ */
 export function revisionNote(assembly: Assembly, revision: number): string {
   for (let index = assembly.revisions.length - 1; index >= 0; index -= 1) {
     const entry = assembly.revisions[index]
-    if (entry.revision === revision && entry.kind === 'save') return entry.note
+    if (entry.revision === revision && entry.note.trim()) return entry.note
   }
   return ''
 }
 
 /**
  * 历史列表中与修订号一起展示的备注：优先本次定稿备注，
- * 旧版计算书没有冻结备注时回退到该修订的保存备注。
+ * 定稿备注为空时回退到该版冻结记录里同修订号的保存或重开说明。
  */
 export function documentSnippet(document: CarbonDocument): string {
   const frozen = document.note?.trim()

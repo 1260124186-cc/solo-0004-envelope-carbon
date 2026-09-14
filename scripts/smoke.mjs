@@ -116,10 +116,42 @@ try {
     await history.selectOption({ index: 1 })
     await text('定稿备注：供审图会评议的基线定稿').waitFor()
     assert.equal(await frozen.innerText(), '90.1')
+
+    // 回归：重开时写备注，不修改也不保存就直接再次定稿，
+    // 该修订只有重开记录，历史列表与计算书必须显示重开说明而不是“未填写备注”。
+    await button('01 构造编辑').click()
+    await page.getByLabel('重新开启编辑的修订备注（可选）').fill('仅修订设计说明口径后重开')
+    await button('重新开启编辑').click()
+    await text('已重新开启编辑，历史计算书保持不变。').waitFor()
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    assert.match(
+      await history.locator('option').first().innerText(),
+      /修订 4.*仅修订设计说明口径后重开/,
+    )
+    await history.selectOption({ index: 0 })
+    await text('定稿备注：仅修订设计说明口径后重开').waitFor()
+    const reopenPendingDownload = page.waitForEvent('download')
+    await button('下载计算书').click()
+    const reopenDownload = await reopenPendingDownload
+    assert.match(reopenDownload.suggestedFilename(), /计算书-4\.txt$/)
+    const reopenStream = await reopenDownload.createReadStream()
+    let reopenOutput = ''
+    for await (const chunk of reopenStream) reopenOutput += chunk.toString('utf8')
+    assert.ok(reopenOutput.includes('定稿备注：仅修订设计说明口径后重开'))
+    // 前两份计算书的备注与冻结结果保持不变。
+    await history.selectOption({ index: 1 })
+    await text('定稿备注：复审后第二版定稿').waitFor()
+    await history.selectOption({ index: 2 })
+    await text('定稿备注：供审图会评议的基线定稿').waitFor()
+    assert.equal(await frozen.innerText(), '90.1')
+
     await page.reload()
     await button('03 计算书').click()
     const reloadedHistory = page.locator('.document-version select')
-    await reloadedHistory.selectOption({ index: 1 })
+    await reloadedHistory.selectOption({ index: 0 })
+    await text('定稿备注：仅修订设计说明口径后重开').waitFor()
+    await reloadedHistory.selectOption({ index: 2 })
     await text('定稿备注：供审图会评议的基线定稿').waitFor()
     assert.equal(await frozen.innerText(), '90.1')
   }
