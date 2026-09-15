@@ -19,6 +19,7 @@ const emit = defineEmits<{
   updateLayer: [id: string, patch: Partial<Layer>]
   removeLayer: [id: string]
   moveLayer: [id: string, direction: -1 | 1]
+  reorderLayers: [from: number, to: number]
   addLayer: [material: Material]
   save: []
   reopen: []
@@ -49,6 +50,7 @@ const emit = defineEmits<{
         @update="(id, patch) => emit('updateLayer', id, patch)"
         @remove="emit('removeLayer', $event)"
         @move="(id, direction) => emit('moveLayer', id, direction)"
+        @reorder="(from, to) => emit('reorderLayers', from, to)"
         @add="emit('addLayer', $event)"
       />
       <div class="design-footer">

@@ -3,8 +3,8 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 
 const workflow = process.argv[2]
-if (!['compose', 'compare', 'document'].includes(workflow)) {
-  throw new Error('请指定 compose、compare 或 document 流程。')
+if (!['compose', 'compare', 'document', 'reorder'].includes(workflow)) {
+  throw new Error('请指定 compose、compare、document 或 reorder 流程。')
 }
 const watchdog = setTimeout(() => {
   console.error('页面冒烟检查超过 60 秒。')
@@ -106,6 +106,73 @@ try {
     await page.reload()
     await button('03 计算书').click()
     assert.equal(await frozen.innerText(), '90.1')
+  }
+  if (workflow === 'reorder') {
+    const layerNames = () =>
+      page.$$eval('.layer-row select', (els) => els.map((el) => el.options[el.selectedIndex].text))
+    const inputAt = (label) => page.getByLabel(label, { exact: true }).inputValue()
+    const thicknessBefore = await Promise.all([1, 2, 3, 4].map((n) => inputAt(`第 ${n} 层厚度`)))
+    const lossBefore = await Promise.all([1, 2, 3, 4].map((n) => inputAt(`第 ${n} 层损耗`)))
+    assert.deepEqual(await layerNames(), ['石灰砂浆', '岩棉板', '蒸压加气混凝土', '石膏板'])
+    // 合成原生拖拽事件：把第 2 层（岩棉）放到第 4 层下半区 -> 插入最末。
+    await page.evaluate(() => {
+      const rows = document.querySelectorAll('.layer-row')
+      const source = rows[1].querySelector('.drag-handle')
+      const target = rows[3]
+      const rect = target.getBoundingClientRect()
+      const dt = new DataTransfer()
+      const fire = (el, type) =>
+        el.dispatchEvent(
+          new DragEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+            clientY: rect.bottom - 5,
+          }),
+        )
+      fire(source, 'dragstart')
+      fire(target, 'dragover')
+      fire(target, 'drop')
+      fire(source, 'dragend')
+    })
+    assert.deepEqual(await layerNames(), ['石灰砂浆', '蒸压加气混凝土', '石膏板', '岩棉板'])
+    // 材料、厚度、损耗、寿命跟随原层对象，不串层。
+    assert.equal(await inputAt('第 4 层厚度'), thicknessBefore[1])
+    assert.equal(await inputAt('第 4 层损耗'), lossBefore[1])
+    assert.equal(await inputAt('第 2 层厚度'), thicknessBefore[2])
+    assert.equal(await inputAt('第 3 层厚度'), thicknessBefore[3])
+    // 排序不改变任何计算结果。
+    assert.equal(await intensity.innerText(), '90.1')
+    // 键盘上下移动仍然可用。
+    await page.getByRole('button', { name: '上移第 4 层', exact: true }).click()
+    assert.deepEqual(await layerNames(), ['石灰砂浆', '蒸压加气混凝土', '岩棉板', '石膏板'])
+    assert.equal(await intensity.innerText(), '90.1')
+    await button('保存构造').click()
+    await text('构造已保存。').waitFor()
+    // 刷新后顺序保持。
+    await page.reload()
+    await intensity.waitFor()
+    assert.deepEqual(await layerNames(), ['石灰砂浆', '蒸压加气混凝土', '岩棉板', '石膏板'])
+    assert.equal(await inputAt('第 3 层厚度'), thicknessBefore[1])
+    assert.equal(await intensity.innerText(), '90.1')
+    // 定稿下载的计算书逐层清单按新顺序排列。
+    await button('生成定稿').click()
+    await text('计算书已定稿，构造现为只读。').waitFor()
+    const pending = page.waitForEvent('download')
+    await button('下载计算书').click()
+    const download = await pending
+    const stream = await download.createReadStream()
+    let output = ''
+    for await (const chunk of stream) output += chunk.toString('utf8')
+    const section = output.slice(output.indexOf('二、构造层'))
+    const positions = ['石灰砂浆', '蒸压加气混凝土', '岩棉板', '石膏板'].map((name) =>
+      section.indexOf(name),
+    )
+    assert.ok(positions.every((v, i) => v >= 0 && (i === 0 || v > positions[i - 1])))
+    assert.ok(output.includes('生命周期强度：90.1'))
+    // 定稿后构造只读，拖柄不可拖动。
+    await button('01 构造编辑').click()
+    assert.equal(await page.locator('.drag-handle').first().getAttribute('draggable'), 'false')
   }
   assert.deepEqual(pageErrors, [])
   await context.close()

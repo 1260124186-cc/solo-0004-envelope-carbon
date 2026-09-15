@@ -10,11 +10,14 @@ const props = defineProps<{
   total: number
   materials: Material[]
   disabled: boolean
+  dragging?: boolean
+  dropBefore?: boolean
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Layer>]
   remove: []
   move: [direction: -1 | 1]
+  dragstart: [event: DragEvent]
 }>()
 const material = computed(() => props.materials.find((item) => item.id === props.layer.materialId))
 function changeMaterial(event: Event) {
@@ -26,11 +29,19 @@ function changeMaterial(event: Event) {
 function numeric(event: Event): number {
   return (event.target as HTMLInputElement).valueAsNumber
 }
+function onDragStart(event: DragEvent) {
+  if (props.disabled) {
+    event.preventDefault()
+    return
+  }
+  emit('dragstart', event)
+}
 </script>
 
 <template>
   <fieldset
     class="layer-row"
+    :class="{ dragging, 'drop-before': dropBefore }"
     :disabled="disabled"
     :aria-label="`第 ${index + 1} 层`"
   >
@@ -65,6 +76,17 @@ function numeric(event: Event): number {
           >{{ kindLabels[material.kind] }}</span
         >
         <div class="layer-actions">
+          <span
+            class="drag-handle"
+            :class="{ disabled: disabled }"
+            :title="disabled ? '' : '拖拽调整构造层顺序（室外到室内）'"
+            :aria-label="`拖拽第 ${index + 1} 层调整顺序`"
+            :aria-grabbed="dragging"
+            :draggable="!disabled"
+            @dragstart="onDragStart"
+          >
+            ⠿
+          </span>
           <button
             class="icon-button"
             :disabled="disabled || index === 0"
@@ -178,7 +200,35 @@ function numeric(event: Event): number {
 }
 .layer-actions {
   display: flex;
+  align-items: center;
   margin-left: auto;
+}
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 26px;
+  color: var(--muted);
+  cursor: grab;
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+  touch-action: none;
+  border-radius: 3px;
+}
+.drag-handle:hover {
+  color: var(--ink);
+}
+.drag-handle.disabled {
+  cursor: default;
+  color: var(--line);
+}
+.layer-row.dragging {
+  opacity: 0.45;
+}
+.layer-row.drop-before {
+  box-shadow: inset 0 3px 0 var(--green);
 }
 .icon-button {
   border: 0;

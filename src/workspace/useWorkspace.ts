@@ -2,7 +2,13 @@ import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
-import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
+import {
+  createAssembly,
+  createLayer,
+  duplicateAssembly,
+  moveLayer,
+  reorderLayers,
+} from '../assemblies/factory'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -135,6 +141,11 @@ export function useWorkspace() {
   function move(id: string, direction: -1 | 1) {
     if (!draft.value) return
     update({ layers: moveLayer(draft.value.layers, id, direction) })
+  }
+
+  function reorder(from: number, to: number) {
+    if (!draft.value) return
+    update({ layers: reorderLayers(draft.value.layers, from, to) })
   }
 
   async function act(change: (next: EnvelopeData) => void, text: string): Promise<boolean> {
@@ -301,6 +312,7 @@ export function useWorkspace() {
     updateLayer,
     removeLayer,
     move,
+    reorder,
     save,
     finalize,
     reopen,

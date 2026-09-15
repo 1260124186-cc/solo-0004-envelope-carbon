@@ -31,6 +31,7 @@ const {
   updateLayer,
   removeLayer,
   move,
+  reorder,
   save,
   finalize,
   reopen,
@@ -89,6 +90,7 @@ const {
         @update-layer="updateLayer"
         @remove-layer="removeLayer"
         @move-layer="move"
+        @reorder-layers="reorder"
         @add-layer="addMaterial"
         @save="save"
         @finalize="finalize"

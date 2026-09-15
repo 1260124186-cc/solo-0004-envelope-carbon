@@ -44,9 +44,16 @@ export function moveLayer(layers: Layer[], id: string, direction: -1 | 1): Layer
   const index = layers.findIndex((layer) => layer.id === id)
   const destination = index + direction
   if (index < 0 || destination < 0 || destination >= layers.length) return layers
+  return reorderLayers(layers, index, destination)
+}
+
+// 只调整层对象在数组中的位置，层本身（材料、厚度、损耗、寿命）原样跟随，不做任何改写。
+export function reorderLayers(layers: Layer[], from: number, to: number): Layer[] {
+  if (from === to || from < 0 || to < 0 || from >= layers.length || to >= layers.length) {
+    return layers
+  }
   const copy = [...layers]
-  const current = copy[index]
-  copy[index] = copy[destination]
-  copy[destination] = current
+  const [moved] = copy.splice(from, 1)
+  copy.splice(to, 0, moved)
   return copy
 }
