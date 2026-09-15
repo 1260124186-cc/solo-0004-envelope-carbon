@@ -30,7 +30,11 @@ export function decode(raw: string): EnvelopeData {
     ) {
       throw new Error('存储结构不完整。')
     }
-    const data = parsed as unknown as EnvelopeData
+    // 旧版本没有归档列表：缺少时视为空列表迁移，不改变任何既有实体。
+    if (parsed.archives !== undefined && !Array.isArray(parsed.archives)) {
+      throw new Error('归档结构不完整。')
+    }
+    const data = { ...(parsed as unknown as EnvelopeData), archives: parsed.archives ?? [] }
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
@@ -41,6 +45,14 @@ export function decode(raw: string): EnvelopeData {
     assertUnique(data.assemblies, '构造')
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
+    const assemblyIds = new Set(data.assemblies.map((assembly) => assembly.id))
+    const archiveIds = new Set<string>()
+    for (const id of data.archives) {
+      if (typeof id !== 'string' || !id) throw new Error('归档标识无效。')
+      if (archiveIds.has(id)) throw new Error('归档标识重复。')
+      if (!assemblyIds.has(id)) throw new Error('归档记录引用了不存在的构造。')
+      archiveIds.add(id)
+    }
     for (const material of data.materials) {
       if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
         throw new Error('材料参数无效。')

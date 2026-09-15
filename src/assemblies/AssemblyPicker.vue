@@ -4,13 +4,16 @@ import { stateLabels } from './types'
 defineProps<{
   assemblies: Assembly[]
   selectedId: string
+  selectedArchivedName?: string
   busy: boolean
   canDuplicate: boolean
+  showArchiveEntry?: boolean
 }>()
 const emit = defineEmits<{
   select: [id: string]
   create: []
   duplicate: []
+  manageArchive: []
 }>()
 </script>
 
@@ -28,7 +31,11 @@ const emit = defineEmits<{
           v-if="!assemblies.some((item) => item.id === selectedId)"
           :value="selectedId"
         >
-          未保存的新构造
+          {{
+            selectedArchivedName
+              ? `${selectedArchivedName} · 已归档（从归档管理恢复）`
+              : '未保存的新构造'
+          }}
         </option>
         <option
           v-for="item in assemblies"
@@ -53,6 +60,14 @@ const emit = defineEmits<{
         @click="emit('duplicate')"
       >
         复制为替代方案
+      </button>
+      <button
+        v-if="showArchiveEntry"
+        class="button"
+        :disabled="busy"
+        @click="emit('manageArchive')"
+      >
+        归档管理
       </button>
     </div>
   </div>

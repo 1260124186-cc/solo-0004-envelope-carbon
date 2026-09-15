@@ -10,8 +10,14 @@ const props = defineProps<{
   dirty: boolean
   busy: boolean
   valid: boolean
+  archived?: boolean
 }>()
-const emit = defineEmits<{ finalize: []; reopen: []; design: [] }>()
+const emit = defineEmits<{
+  finalize: []
+  reopen: []
+  design: []
+  restore: []
+}>()
 const selectedId = shallowRef('')
 watch(
   () => props.documents,
@@ -51,6 +57,19 @@ const selected = computed(() =>
       </button>
     </div>
     <p class="section-intro">定稿将冻结构造与全部材料物性，计算书始终按生成时的输入显示。</p>
+    <p
+      v-if="archived"
+      class="inline-warning"
+    >
+      该构造已归档：它已从「当前构造」和「方案比较」中隐藏，但历史计算书仍可在此打开，定稿只读状态也未改变。恢复后按原身份回到工作列表。
+      <button
+        class="button small inline-action"
+        :disabled="busy"
+        @click="emit('restore')"
+      >
+        恢复到当前列表
+      </button>
+    </p>
     <p
       v-if="dirty"
       class="inline-warning"
@@ -99,5 +118,9 @@ const selected = computed(() =>
 .document-version {
   max-width: 420px;
   margin: 24px 0;
+}
+.inline-action {
+  margin-left: 12px;
+  vertical-align: baseline;
 }
 </style>

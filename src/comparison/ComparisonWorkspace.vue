@@ -50,7 +50,9 @@ const canAlign = computed(
       class="empty-state"
     >
       <h2>还需要一个替代构造</h2>
-      <p>返回构造编辑，使用「复制为替代方案」，修改并保存后即可比较。</p>
+      <p>
+        返回构造编辑，使用「复制为替代方案」，修改并保存后即可比较。已归档的构造默认不参与比较，需要时可在归档管理中恢复。
+      </p>
       <button
         class="button primary"
         @click="emit('design')"

@@ -13,6 +13,7 @@ defineProps<{
   findings: Finding[]
   busy: boolean
   dirty: boolean
+  archived?: boolean
 }>()
 const emit = defineEmits<{
   update: [patch: Partial<Assembly>]
@@ -23,29 +24,38 @@ const emit = defineEmits<{
   save: []
   reopen: []
   finalize: []
+  restore: []
 }>()
 </script>
 
 <template>
   <div class="design-grid">
     <section class="design-surface">
+      <p
+        v-if="archived"
+        class="inline-warning"
+      >
+        这是已归档构造：已从当前列表与方案比较中隐藏，但内容完整保留。归档期间不可编辑，定稿构造仍保持只读；恢复后按原身份回到工作列表。
+      </p>
       <div class="section-heading">
         <div>
           <span class="eyebrow">设计条件</span>
           <h1>让每一层，都有依据。</h1>
         </div>
-        <span class="state-label">{{ stateLabels[assembly.state] }}</span>
+        <span class="state-label"
+          >{{ stateLabels[assembly.state] }}{{ archived ? ' · 已归档' : '' }}</span
+        >
       </div>
       <p class="section-intro">定义构造、校核物性，在材料选择中看见减碳的可能。</p>
       <AssemblyFields
         :assembly="assembly"
-        :disabled="busy || assembly.state === 'finalized'"
+        :disabled="busy || archived || assembly.state === 'finalized'"
         @update="emit('update', $event)"
       />
       <LayerEditor
         :layers="assembly.layers"
         :materials="materials"
-        :disabled="busy || assembly.state === 'finalized'"
+        :disabled="busy || archived || assembly.state === 'finalized'"
         @update="(id, patch) => emit('updateLayer', id, patch)"
         @remove="emit('removeLayer', $event)"
         @move="(id, direction) => emit('moveLayer', id, direction)"
@@ -53,10 +63,24 @@ const emit = defineEmits<{
       />
       <div class="design-footer">
         <span class="save-indicator">{{
-          busy ? '正在保存…' : dirty ? '有未保存的修改' : `已保存 · 修订 ${assembly.revision}`
+          archived
+            ? '已归档：从列表隐藏，未被删除'
+            : busy
+              ? '正在保存…'
+              : dirty
+                ? '有未保存的修改'
+                : `已保存 · 修订 ${assembly.revision}`
         }}</span>
         <div class="actions">
-          <template v-if="assembly.state === 'editing'">
+          <button
+            v-if="archived"
+            class="button primary"
+            :disabled="busy"
+            @click="emit('restore')"
+          >
+            恢复到当前列表
+          </button>
+          <template v-else-if="assembly.state === 'editing'">
             <button
               class="button"
               :disabled="busy || dirty || !result"
