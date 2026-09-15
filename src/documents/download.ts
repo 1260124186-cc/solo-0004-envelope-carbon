@@ -1,5 +1,5 @@
 import type { CarbonDocument } from './types'
-import { number, date } from '../shared/format'
+import { number, date, full } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 
 export function documentText(document: CarbonDocument): string {
@@ -31,11 +31,11 @@ export function documentText(document: CarbonDocument): string {
       `参数来源：${layer.source}`,
     )
   })
-  lines.push('', '三、冻结物性')
+  lines.push('', '三、冻结物性（完整存储值，未经四舍五入）')
   document.materials.forEach((material) => {
     lines.push(
-      `${material.name}：密度 ${material.density} 千克/立方米`,
-      `导热系数 ${material.conductivity} 瓦/(米·开尔文)；碳因子 ${material.factor} 千克二氧化碳当量/千克`,
+      `${material.name}：密度 ${full(material.density)} 千克/立方米`,
+      `导热系数 ${full(material.conductivity)} 瓦/(米·开尔文)；碳因子 ${full(material.factor)} 千克二氧化碳当量/千克；参考寿命 ${full(material.lifespan)} 年`,
     )
   })
   lines.push(

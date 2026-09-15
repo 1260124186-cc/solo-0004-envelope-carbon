@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CarbonDocument } from './types'
-import { number, date } from '../shared/format'
+import { number, date, full } from '../shared/format'
 import { surfaceLabels } from '../assemblies/types'
 import { downloadDocument } from './download'
 defineProps<{ document: CarbonDocument }>()
@@ -60,6 +60,34 @@ defineProps<{ document: CarbonDocument }>()
             <td>{{ number(layer.thickness) }}</td>
             <td>{{ layer.cycles }}</td>
             <td>{{ number(layer.total) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <caption>
+          冻结物性（完整存储值，未经四舍五入，即实际参与计算的数值）
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">材料</th>
+            <th scope="col">密度（千克/立方米）</th>
+            <th scope="col">导热系数（瓦/米·开尔文）</th>
+            <th scope="col">碳因子（千克当量/千克）</th>
+            <th scope="col">参考寿命（年）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="material in document.materials"
+            :key="material.id"
+          >
+            <th scope="row">{{ material.name }}</th>
+            <td data-check="frozen-density">{{ full(material.density) }}</td>
+            <td data-check="frozen-conductivity">{{ full(material.conductivity) }}</td>
+            <td data-check="frozen-factor">{{ full(material.factor) }}</td>
+            <td>{{ full(material.lifespan) }}</td>
           </tr>
         </tbody>
       </table>
