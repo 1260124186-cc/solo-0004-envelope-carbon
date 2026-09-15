@@ -81,6 +81,26 @@ try {
   }
 
   if (workflow === 'document') {
+    await page.evaluate(() => {
+      const key = 'solo-0004-envelope-carbon:design:v1'
+      const data = JSON.parse(localStorage.getItem(key))
+      data.assemblies[0].layers[0].materialId = 'missing-material'
+      data.stamp = 'dangling-reference-fixture'
+      localStorage.setItem(key, JSON.stringify(data))
+    })
+    await page.reload()
+    await button('生成定稿').first().waitFor()
+    await button('生成定稿').click()
+    await page.getByRole('heading', { name: '冻结预览' }).waitFor()
+    const blockers = page.locator('.preview-blockers')
+    const blockerText = await blockers.innerText()
+    assert.match(blockerText, /第 1 层[\s\S]*引用的材料不存在/)
+    assert.equal(await button('确认并生成计算书').isEnabled(), false)
+    await button('取消').click()
+    await page.evaluate(() => localStorage.removeItem('solo-0004-envelope-carbon:design:v1'))
+    await page.reload()
+    await intensity.waitFor()
+
     await button('生成定稿').click()
     const previewTitle = page.getByRole('heading', { name: '冻结预览' })
     await previewTitle.waitFor()

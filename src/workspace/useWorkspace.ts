@@ -38,7 +38,11 @@ export function useWorkspace() {
   )
   const result = computed(() => {
     if (!draft.value || !data.value || findings.value.length) return null
-    return calculate(draft.value, data.value.materials)
+    try {
+      return calculate(draft.value, data.value.materials)
+    } catch {
+      return null
+    }
   })
   const selectedDocuments = computed(
     () =>

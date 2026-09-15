@@ -56,9 +56,7 @@ export function findingLocation(assembly: Assembly, finding: Finding): string {
   if (finding.path.startsWith('layers.')) {
     const layerId = finding.path.slice('layers.'.length)
     const index = assembly.layers.findIndex((layer) => layer.id === layerId)
-    if (index < 0) return `构造层 · ${layerId}`
-    const material = assembly.layers[index]
-    return `构造层 · 第 ${index + 1} 层（材料 ${material.materialId}）`
+    return index < 0 ? '构造层' : `第 ${index + 1} 层`
   }
   return finding.path || '构造参数'
 }
@@ -93,12 +91,21 @@ export function buildFreezePreview(assembly: Assembly, store: FreezePreviewStore
     })
   }
 
+  const layerIndexByMaterial = new Map<string, number>()
+  assembly.layers.forEach((layer, index) => {
+    if (!layerIndexByMaterial.has(layer.materialId))
+      layerIndexByMaterial.set(layer.materialId, index)
+  })
+
   for (const material of materials) {
+    const layerIndex = layerIndexByMaterial.get(material.id)
+    const location =
+      layerIndex === undefined ? `材料物性快照 · ${material.name}` : `第 ${layerIndex + 1} 层`
     for (const text of validateMaterial(material)) {
       issues.push({
         severity: 'error',
-        location: `材料物性快照 · ${material.name}`,
-        text,
+        location,
+        text: `材料「${material.name}」${text}`,
       })
     }
   }

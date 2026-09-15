@@ -1,6 +1,4 @@
 import type { EnvelopeData } from './types'
-import { validateAssembly } from '../assemblies/validation'
-import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { DOCUMENT_CAPACITY } from '../documents/preview'
 
@@ -16,6 +14,74 @@ function assertUnique(items: { id: string }[], label: string): void {
     }
     ids.add(item.id)
   }
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function hasLayerShape(layer: unknown): boolean {
+  return (
+    object(layer) &&
+    isString(layer.id) &&
+    isString(layer.materialId) &&
+    isFiniteNumber(layer.thickness) &&
+    isFiniteNumber(layer.loss) &&
+    isFiniteNumber(layer.lifespan)
+  )
+}
+
+function hasMaterialShape(material: unknown): boolean {
+  if (!object(material)) return false
+  return (
+    isString(material.id) &&
+    isString(material.name) &&
+    isString(material.kind) &&
+    isString(material.source) &&
+    isString(material.description) &&
+    typeof material.custom === 'boolean' &&
+    isFiniteNumber(material.density) &&
+    isFiniteNumber(material.conductivity) &&
+    isFiniteNumber(material.factor) &&
+    isFiniteNumber(material.lifespan)
+  )
+}
+
+function hasAssemblyShape(assembly: unknown): boolean {
+  if (!object(assembly)) return false
+  return (
+    isString(assembly.id) &&
+    isString(assembly.name) &&
+    isString(assembly.surface) &&
+    isString(assembly.note) &&
+    isString(assembly.updatedAt) &&
+    isFiniteNumber(assembly.area) &&
+    isFiniteNumber(assembly.years) &&
+    isFiniteNumber(assembly.carbonLimit) &&
+    isFiniteNumber(assembly.thermalLimit) &&
+    Number.isInteger(assembly.revision) &&
+    (assembly.state === 'editing' || assembly.state === 'finalized') &&
+    Array.isArray(assembly.layers) &&
+    assembly.layers.every(hasLayerShape)
+  )
+}
+
+function hasDocumentShape(document: unknown): boolean {
+  if (!object(document)) return false
+  return (
+    isString(document.id) &&
+    isString(document.assemblyId) &&
+    isString(document.createdAt) &&
+    hasAssemblyShape(document.assembly) &&
+    Array.isArray(document.materials) &&
+    document.materials.every(hasMaterialShape) &&
+    object(document.result) &&
+    Array.isArray(document.result.layers)
+  )
 }
 
 export function decode(raw: string): EnvelopeData {
@@ -43,18 +109,16 @@ export function decode(raw: string): EnvelopeData {
     assertUnique(data.materials, '材料')
     assertUnique(data.documents, '计算书')
     for (const material of data.materials) {
-      if (typeof material.custom !== 'boolean' || validateMaterial(material).length) {
-        throw new Error('材料参数无效。')
+      if (!hasMaterialShape(material)) {
+        throw new Error('材料结构不完整。')
       }
     }
     for (const assembly of data.assemblies) {
-      if (!['editing', 'finalized'].includes(assembly.state)) throw new Error('构造状态无效。')
-      if (!Number.isInteger(assembly.revision) || assembly.revision < 1)
-        throw new Error('修订号无效。')
+      if (!hasAssemblyShape(assembly)) throw new Error('构造结构不完整。')
       if (!Number.isFinite(Date.parse(assembly.updatedAt))) throw new Error('构造时间无效。')
-      if (validateAssembly(assembly, data.materials).length) throw new Error('构造参数无效。')
     }
     for (const document of data.documents) {
+      if (!hasDocumentShape(document)) throw new Error('计算书结构不完整。')
       if (document.assemblyId !== document.assembly.id || document.assembly.state !== 'finalized') {
         throw new Error('计算书与冻结构造不一致。')
       }

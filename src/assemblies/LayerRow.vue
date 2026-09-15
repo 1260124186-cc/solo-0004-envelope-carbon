@@ -48,8 +48,16 @@ function numeric(event: Event): number {
           <select
             :value="layer.materialId"
             :aria-label="`第 ${index + 1} 层材料`"
+            :aria-invalid="!material"
             @change="changeMaterial"
           >
+            <option
+              v-if="!material"
+              :value="layer.materialId"
+              disabled
+            >
+              缺失材料：{{ layer.materialId }}
+            </option>
             <option
               v-for="item in materials"
               :key="item.id"
