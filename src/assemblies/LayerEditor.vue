@@ -3,7 +3,7 @@ import type { Layer } from './types'
 import type { Material } from '../materials/types'
 import LayerRow from './LayerRow.vue'
 import MaterialPicker from '../materials/MaterialPicker.vue'
-defineProps<{ layers: Layer[]; materials: Material[]; disabled: boolean }>()
+defineProps<{ layers: Layer[]; materials: Material[]; years: number; disabled: boolean }>()
 const emit = defineEmits<{
   update: [id: string, patch: Partial<Layer>]
   remove: [id: string]
@@ -38,6 +38,7 @@ const emit = defineEmits<{
       :index="index"
       :total="layers.length"
       :materials="materials"
+      :years="years"
       :disabled="disabled"
       @update="emit('update', layer.id, $event)"
       @remove="emit('remove', layer.id)"

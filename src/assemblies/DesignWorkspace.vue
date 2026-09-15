@@ -45,6 +45,7 @@ const emit = defineEmits<{
       <LayerEditor
         :layers="assembly.layers"
         :materials="materials"
+        :years="assembly.years"
         :disabled="busy || assembly.state === 'finalized'"
         @update="(id, patch) => emit('updateLayer', id, patch)"
         @remove="emit('removeLayer', $event)"

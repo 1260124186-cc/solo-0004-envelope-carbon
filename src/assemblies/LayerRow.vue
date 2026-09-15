@@ -4,11 +4,13 @@ import type { Layer } from './types'
 import type { Material } from '../materials/types'
 import { kindColors, kindLabels } from '../materials/types'
 import { number } from '../shared/format'
+import LayerReplacementPreview from './LayerReplacementPreview.vue'
 const props = defineProps<{
   layer: Layer
   index: number
   total: number
   materials: Material[]
+  years: number
   disabled: boolean
 }>()
 const emit = defineEmits<{
@@ -134,6 +136,12 @@ function numeric(event: Event): number {
         密度 {{ number(material.density) }} 千克/立方米 <span>·</span> 碳因子
         {{ number(material.factor) }} 千克当量/千克
       </p>
+      <LayerReplacementPreview
+        v-if="material"
+        :layer="layer"
+        :material="material"
+        :years="years"
+      />
     </div>
   </fieldset>
 </template>
