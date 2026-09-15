@@ -3,6 +3,8 @@ import type { Assembly, Layer } from '../assemblies/types'
 import type { Material } from '../materials/types'
 import type { EnvelopeData } from '../persistence/types'
 import { createAssembly, createLayer, duplicateAssembly, moveLayer } from '../assemblies/factory'
+import { diffAssembly, summarizeAssembly } from '../assemblies/diff'
+import type { AssemblyDiff, AssemblySummary } from '../assemblies/diff'
 import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
@@ -24,6 +26,10 @@ export function useWorkspace() {
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
+  const saveReview = shallowRef<{
+    diff: AssemblyDiff | null
+    summary: AssemblySummary | null
+  } | null>(null)
   const persisted = computed(() =>
     data.value?.assemblies.find((item) => item.id === draft.value?.id),
   )
@@ -68,6 +74,7 @@ export function useWorkspace() {
       alternativeId.value = next.assemblies[1]?.id ?? ''
       fatal.value = ''
       externalChange.value = false
+      saveReview.value = null
       clearFeedback()
       if (!initial) notice.value = '已重新加载保存版本。'
     } catch (cause) {
@@ -80,6 +87,7 @@ export function useWorkspace() {
     const selected = data.value?.assemblies.find((item) => item.id === id)
     if (!selected) return
     draft.value = clone(selected)
+    saveReview.value = null
     clearFeedback()
     tab.value = 'design'
   }
@@ -87,6 +95,7 @@ export function useWorkspace() {
   function create() {
     if (busy.value || !mayDiscard()) return
     draft.value = createAssembly()
+    saveReview.value = null
     clearFeedback()
     tab.value = 'design'
   }
@@ -154,8 +163,28 @@ export function useWorkspace() {
     }
   }
 
-  async function save() {
+  function save() {
+    if (!draft.value || !data.value || !editable.value || busy.value) return
+    if (findings.value.length) {
+      error.value = findings.value[0].text
+      return
+    }
+    clearFeedback()
+    saveReview.value = persisted.value
+      ? {
+          diff: diffAssembly(draft.value, persisted.value, data.value.materials),
+          summary: null,
+        }
+      : { diff: null, summary: summarizeAssembly(draft.value, data.value.materials) }
+  }
+
+  function cancelSave() {
+    saveReview.value = null
+  }
+
+  async function confirmSave() {
     if (!draft.value || !data.value || !editable.value) return
+    saveReview.value = null
     if (findings.value.length) {
       error.value = findings.value[0].text
       return
@@ -292,6 +321,7 @@ export function useWorkspace() {
     selectedDocuments,
     baselineId,
     alternativeId,
+    saveReview,
     load,
     select,
     create,
@@ -302,6 +332,8 @@ export function useWorkspace() {
     removeLayer,
     move,
     save,
+    cancelSave,
+    confirmSave,
     finalize,
     reopen,
     addCustomMaterial,

@@ -4,6 +4,7 @@ import WorkspaceHeader from './workspace/WorkspaceHeader.vue'
 import FeedbackBanner from './workspace/FeedbackBanner.vue'
 import AssemblyPicker from './assemblies/AssemblyPicker.vue'
 import DesignWorkspace from './assemblies/DesignWorkspace.vue'
+import SaveConfirmDialog from './assemblies/SaveConfirmDialog.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
@@ -22,6 +23,7 @@ const {
   selectedDocuments,
   baselineId,
   alternativeId,
+  saveReview,
   load,
   select,
   create,
@@ -32,6 +34,8 @@ const {
   removeLayer,
   move,
   save,
+  cancelSave,
+  confirmSave,
   finalize,
   reopen,
   addCustomMaterial,
@@ -121,6 +125,14 @@ const {
         :materials="data.materials"
         :busy="busy"
         :submit-material="addCustomMaterial"
+      />
+      <SaveConfirmDialog
+        v-if="saveReview"
+        :diff="saveReview.diff"
+        :summary="saveReview.summary"
+        :busy="busy"
+        @confirm="confirmSave"
+        @cancel="cancelSave"
       />
     </template>
     <div
