@@ -59,7 +59,7 @@ const emit = defineEmits<{
           <template v-if="assembly.state === 'editing'">
             <button
               class="button"
-              :disabled="busy || dirty || !result"
+              :disabled="busy || dirty"
               @click="emit('finalize')"
             >
               生成定稿

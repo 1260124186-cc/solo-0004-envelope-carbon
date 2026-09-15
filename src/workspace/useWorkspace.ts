@@ -7,6 +7,7 @@ import { requireEditable, validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
 import { createDocument } from '../documents/create'
+import { buildFreezePreview, type FreezePreview } from '../documents/preview'
 import { commitData, readData } from '../persistence/repository'
 import { persistenceKey } from '../persistence/types'
 import { clone, newId, now } from '../shared/identity'
@@ -21,6 +22,7 @@ export function useWorkspace() {
   const error = shallowRef('')
   const busy = shallowRef(false)
   const externalChange = shallowRef(false)
+  const freezePreview = shallowRef<FreezePreview | null>(null)
   const fatal = shallowRef('')
   const baselineId = shallowRef('')
   const alternativeId = shallowRef('')
@@ -177,22 +179,70 @@ export function useWorkspace() {
     if (saved) draft.value = clone(candidate)
   }
 
-  async function finalize() {
-    if (!draft.value || !persisted.value || dirty.value) {
-      error.value = '请先保存当前构造，再生成定稿。'
+  function openFinalizePreview() {
+    if (!draft.value || !data.value || busy.value) return
+    if (dirty.value || !persisted.value) {
+      error.value = '请先保存当前构造，再生成定稿；未保存草稿不会进入冻结预览。'
       return
     }
-    const id = draft.value.id
+    if (externalChange.value) {
+      error.value = '检测到另一标签页已修改设计。请重新加载保存版本后，再查看冻结预览。'
+      return
+    }
+
+    let latest: EnvelopeData
+    try {
+      latest = readData()
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '无法读取当前已保存的构造。'
+      return
+    }
+    if (latest.stamp !== data.value.stamp) {
+      externalChange.value = true
+      error.value = '另一标签页已修改设计。请重新加载保存版本后，再查看冻结预览。'
+      return
+    }
+
+    const savedAssembly = latest.assemblies.find((item) => item.id === draft.value?.id)
+    if (!savedAssembly) {
+      error.value = '当前构造尚未保存，无法生成冻结预览。'
+      return
+    }
+    if (JSON.stringify(savedAssembly) !== JSON.stringify(persisted.value)) {
+      externalChange.value = true
+      error.value = '已保存构造与当前版本不一致。请重新加载后再生成定稿。'
+      return
+    }
+    freezePreview.value = buildFreezePreview(savedAssembly, latest)
+    clearFeedback()
+  }
+
+  function cancelFinalize() {
+    if (busy.value) return
+    freezePreview.value = null
+    clearFeedback()
+  }
+
+  async function confirmFinalize() {
+    const preview = freezePreview.value
+    if (!preview || !preview.canFinalize || !data.value || busy.value) return
+    const id = preview.assembly.id
     const saved = await act((next) => {
       const assembly = next.assemblies.find((item) => item.id === id)
       if (!assembly) throw new Error('构造不存在。')
-      if (next.documents.length >= 1000) throw new Error('计算书已达到 1,000 份容量上限。')
+      const nextPreview = buildFreezePreview(assembly, next)
+      if (!nextPreview.canFinalize) {
+        throw new Error(
+          nextPreview.issues.map((issue) => `${issue.location}：${issue.text}`).join('\n'),
+        )
+      }
       const document = createDocument(assembly, next.materials)
       next.documents.push(document)
       assembly.state = 'finalized'
       assembly.updatedAt = now()
     }, '计算书已定稿，构造现为只读。')
     if (saved) {
+      freezePreview.value = null
       draft.value = clone(data.value!.assemblies.find((item) => item.id === id)!)
       tab.value = 'documents'
     }
@@ -285,6 +335,7 @@ export function useWorkspace() {
     fatal,
     busy,
     externalChange,
+    freezePreview,
     dirty,
     editable,
     findings,
@@ -302,7 +353,9 @@ export function useWorkspace() {
     removeLayer,
     move,
     save,
-    finalize,
+    openFinalizePreview,
+    cancelFinalize,
+    confirmFinalize,
     reopen,
     addCustomMaterial,
     alignAlternative,

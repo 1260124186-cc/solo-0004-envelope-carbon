@@ -9,7 +9,6 @@ const props = defineProps<{
   documents: CarbonDocument[]
   dirty: boolean
   busy: boolean
-  valid: boolean
 }>()
 const emit = defineEmits<{ finalize: []; reopen: []; design: [] }>()
 const selectedId = shallowRef('')
@@ -44,13 +43,15 @@ const selected = computed(() =>
       <button
         v-else
         class="button primary"
-        :disabled="busy || dirty || !valid"
+        :disabled="busy || dirty"
         @click="emit('finalize')"
       >
         生成定稿
       </button>
     </div>
-    <p class="section-intro">定稿将冻结构造与全部材料物性，计算书始终按生成时的输入显示。</p>
+    <p class="section-intro">
+      点击生成定稿后先检查当前已保存版本，预览将冻结构造、材料物性与计算结果；确认无误后才生成计算书。
+    </p>
     <p
       v-if="dirty"
       class="inline-warning"

@@ -82,6 +82,17 @@ try {
 
   if (workflow === 'document') {
     await button('生成定稿').click()
+    const previewTitle = page.getByRole('heading', { name: '冻结预览' })
+    await previewTitle.waitFor()
+    assert.equal(await page.locator('[data-check="preview-revision"]').innerText(), '1')
+    assert.equal(await page.locator('[data-check="preview-intensity"]').innerText(), '90.1')
+    assert.equal(await button('确认并生成计算书').isEnabled(), true)
+    await button('取消').click()
+    await previewTitle.waitFor({ state: 'detached' })
+    assert.equal(await button('生成定稿').isEnabled(), true)
+
+    await button('生成定稿').click()
+    await page.getByRole('button', { name: '确认并生成计算书' }).click()
     await text('计算书已定稿，构造现为只读。').waitFor()
     const frozen = page.locator('[data-check="frozen-intensity"]')
     assert.equal(await frozen.innerText(), '90.1')

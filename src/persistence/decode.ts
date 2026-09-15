@@ -2,6 +2,7 @@ import type { EnvelopeData } from './types'
 import { validateAssembly } from '../assemblies/validation'
 import { validateMaterial } from '../materials/validation'
 import { calculate } from '../carbon/engine'
+import { DOCUMENT_CAPACITY } from '../documents/preview'
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -34,7 +35,7 @@ export function decode(raw: string): EnvelopeData {
     if (
       data.assemblies.length > 200 ||
       data.materials.length > 500 ||
-      data.documents.length > 1000
+      data.documents.length > DOCUMENT_CAPACITY
     ) {
       throw new Error('存储条目超出当前版本容量。')
     }

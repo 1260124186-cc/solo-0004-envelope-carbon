@@ -7,6 +7,7 @@ import DesignWorkspace from './assemblies/DesignWorkspace.vue'
 import ComparisonWorkspace from './comparison/ComparisonWorkspace.vue'
 import DocumentWorkspace from './documents/DocumentWorkspace.vue'
 import MaterialWorkspace from './materials/MaterialWorkspace.vue'
+import FreezePreviewDialog from './documents/FreezePreviewDialog.vue'
 const {
   data,
   draft,
@@ -16,6 +17,7 @@ const {
   fatal,
   busy,
   externalChange,
+  freezePreview,
   dirty,
   findings,
   result,
@@ -32,7 +34,9 @@ const {
   removeLayer,
   move,
   save,
-  finalize,
+  openFinalizePreview,
+  cancelFinalize,
+  confirmFinalize,
   reopen,
   addCustomMaterial,
   alignAlternative,
@@ -91,7 +95,7 @@ const {
         @move-layer="move"
         @add-layer="addMaterial"
         @save="save"
-        @finalize="finalize"
+        @finalize="openFinalizePreview"
         @reopen="reopen"
       />
       <ComparisonWorkspace
@@ -111,8 +115,7 @@ const {
         :documents="selectedDocuments"
         :dirty="dirty"
         :busy="busy"
-        :valid="Boolean(result)"
-        @finalize="finalize"
+        @finalize="openFinalizePreview"
         @reopen="reopen"
         @design="tab = 'design'"
       />
@@ -130,6 +133,14 @@ const {
       正在准备构造工作区…
     </div>
   </main>
+  <FreezePreviewDialog
+    v-if="freezePreview"
+    :preview="freezePreview"
+    :busy="busy"
+    :error="error"
+    @cancel="cancelFinalize"
+    @confirm="confirmFinalize"
+  />
   <footer class="site-footer">
     <span>围护碳研 · 从构造出发</span><span>设计保存在当前浏览器 · 示例物性仅供教学</span>
   </footer>
